@@ -5,7 +5,7 @@ import type {
 import { cn } from '../../utils/cn'
 
 const fieldStyles =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-100 dark:placeholder:text-slate-500 dark:hover:border-slate-600 dark:focus:border-indigo-400'
+  'w-full rounded-md border border-[var(--color-rail)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-ink)] outline-none transition placeholder:text-[color:rgb(31_41_51/0.4)] hover:border-[#cfc9bc] focus:border-[var(--color-signal)] focus:ring-2 focus:ring-[var(--color-signal)]/20 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-100 dark:placeholder:text-slate-500 dark:hover:border-slate-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/20'
 
 export function Input({
   className,
@@ -60,15 +60,15 @@ export function Field({
       <div className="flex items-baseline justify-between gap-3">
         <label
           htmlFor={htmlFor}
-          className="text-xs font-semibold tracking-wide text-slate-600 uppercase dark:text-slate-400"
+          className="text-xs font-medium text-[color:rgb(31_41_51/0.75)] dark:text-slate-400"
         >
           {label}
         </label>
         {hint && (
           <span
             className={cn(
-              'text-[11px] text-slate-400 dark:text-slate-500',
-              error && 'text-rose-500 dark:text-rose-400',
+              'text-[11px] text-[color:rgb(31_41_51/0.5)] dark:text-slate-500',
+              error && 'text-[var(--color-alert)] dark:text-rose-400',
             )}
           >
             {hint}
@@ -77,7 +77,7 @@ export function Field({
       </div>
       {children}
       {error && (
-        <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
+        <p className="text-xs text-[var(--color-alert)] dark:text-rose-400">{error}</p>
       )}
     </div>
   )

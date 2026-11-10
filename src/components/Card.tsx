@@ -46,12 +46,12 @@ function CardContent({ card }: { card: CardModel }) {
         </div>
       )}
 
-      <h3 className="line-clamp-3 pr-6 text-sm leading-snug font-medium text-slate-900 dark:text-slate-100">
+      <h3 className="line-clamp-3 pr-6 font-serif text-[1rem] leading-snug font-semibold text-[var(--color-ink)] dark:text-slate-100">
         {card.title}
       </h3>
 
       {card.description && (
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[color:rgb(31_41_51/0.68)] dark:text-slate-400">
           {card.description}
         </p>
       )}
@@ -63,10 +63,10 @@ function CardContent({ card }: { card: CardModel }) {
             className={cn(
               'inline-flex items-center gap-1 text-[11px] font-medium whitespace-nowrap',
               overdue
-                ? 'text-rose-600 dark:text-rose-400'
+                ? 'text-[var(--color-alert)] dark:text-rose-400'
                 : dueToday
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-slate-500 dark:text-slate-400',
+                  ? 'text-[#8a6a2f] dark:text-amber-400'
+                  : 'text-[color:rgb(31_41_51/0.6)] dark:text-slate-400',
             )}
             title={`Due ${card.dueDate}`}
           >
@@ -78,7 +78,7 @@ function CardContent({ card }: { card: CardModel }) {
         )}
         {card.assignee && (
           <span
-            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-semibold text-indigo-700 ring-2 ring-white dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-slate-800"
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-signal)]/12 text-[10px] font-semibold text-[var(--color-signal)] ring-1 ring-[var(--color-rail)] dark:bg-indigo-500/20 dark:text-indigo-300 dark:ring-slate-800"
             title={`Assigned to ${card.assignee}`}
           >
             {getInitials(card.assignee)}
@@ -132,9 +132,9 @@ export function Card({ card, onOpen }: CardProps) {
       onClick={() => onOpen(card.id)}
       aria-label={`${card.title}. Press Enter to edit or Space to drag.`}
       className={cn(
-        'group relative cursor-grab touch-manipulation rounded-xl border border-slate-200/90 bg-white p-3 shadow-sm ring-1 ring-transparent transition-[box-shadow,border-color,opacity] select-none [-webkit-touch-callout:none]',
-        'hover:border-slate-300 hover:shadow-md focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:outline-none active:cursor-grabbing',
-        'dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600',
+        'group relative cursor-grab touch-manipulation rounded-sm border border-[var(--color-rail)] bg-[var(--color-surface)] p-3 shadow-[0_1px_0_rgba(31,41,51,0.04)] ring-1 ring-transparent transition-[box-shadow,border-color,opacity,transform] select-none [-webkit-touch-callout:none]',
+        'hover:border-[#cfc9bc] hover:shadow-[0_6px_16px_rgba(31,41,51,0.08)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/50 focus-visible:outline-none active:cursor-grabbing',
+        'dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600 dark:focus-visible:ring-indigo-500/60',
         isDragging && 'opacity-40',
       )}
     >
@@ -147,7 +147,7 @@ export function Card({ card, onOpen }: CardProps) {
           event.stopPropagation()
           onOpen(card.id)
         }}
-        className="absolute top-2 right-2 rounded-md p-1 text-slate-400 opacity-0 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+        className="absolute top-2 right-2 rounded-md p-1 text-[color:rgb(31_41_51/0.45)] opacity-0 transition hover:bg-[var(--color-rail)]/60 hover:text-[var(--color-ink)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500"
       >
         <PencilIcon className="h-3.5 w-3.5" />
       </button>
@@ -158,7 +158,7 @@ export function Card({ card, onOpen }: CardProps) {
 
 export function CardPreview({ card }: { card: CardModel }) {
   return (
-    <div className="w-[min(84vw,300px)] rotate-2 cursor-grabbing rounded-xl border border-indigo-300 bg-white p-3 shadow-2xl ring-2 ring-indigo-400/40 sm:w-[300px] dark:border-indigo-500/40 dark:bg-slate-800">
+    <div className="w-[min(84vw,300px)] rotate-1 cursor-grabbing rounded-sm border border-[var(--color-signal)]/40 bg-[var(--color-surface)] p-3 shadow-[0_18px_40px_rgba(31,41,51,0.2)] ring-1 ring-[var(--color-signal)]/20 sm:w-[300px] dark:border-indigo-500/40 dark:bg-slate-800 dark:ring-indigo-400/40 dark:shadow-2xl">
       <CardContent card={card} />
     </div>
   )

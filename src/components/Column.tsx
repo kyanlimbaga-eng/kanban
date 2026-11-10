@@ -82,23 +82,23 @@ export function Column({
       style={style}
       aria-labelledby={`column-title-${column.id}`}
       className={cn(
-        'flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-300/60 bg-slate-200/70 shadow-sm transition-shadow',
+        'flex h-full min-w-0 flex-col overflow-hidden rounded-md border border-[var(--color-rail)] bg-[color:rgb(231_227_218/0.45)] transition-[box-shadow,border-color,opacity]',
         'dark:border-slate-800 dark:bg-slate-900/70',
         isDragging && 'relative z-20 opacity-90 shadow-2xl ring-2 ring-indigo-400/70',
         dragType === 'column' && isOver && 'ring-2 ring-indigo-400/50',
       )}
     >
-      <header className="flex items-center gap-2 px-3 pt-2.5 pb-2">
-        <span className={cn('h-2 w-2 shrink-0 rounded-full', accentClass)} />
+      <header className="flex items-center gap-2 border-b border-[var(--color-rail)] px-3 pt-3 pb-2.5 dark:border-slate-800">
+        <span className={cn('h-2.5 w-2.5 shrink-0 rounded-[2px]', accentClass)} />
         <h2
           id={`column-title-${column.id}`}
           title={column.title}
-          className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200"
+          className="min-w-0 flex-1 truncate font-serif text-[1.2rem] font-semibold leading-none tracking-tight text-[var(--color-ink)] dark:text-slate-200"
         >
           {column.title}
         </h2>
         <span
-          className="shrink-0 rounded-full bg-slate-300/60 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+          className="shrink-0 rounded-sm border border-[var(--color-rail)] bg-[var(--color-surface)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[color:rgb(31_41_51/0.7)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
           title={
             showingFiltered
               ? `${cards.length} of ${totalLabel} match the filters`
@@ -114,7 +114,7 @@ export function Column({
             {...listeners}
             aria-label={`Reorder ${column.title} column`}
             title="Drag to reorder column"
-            className="inline-flex h-7 w-7 cursor-grab touch-manipulation items-center justify-center rounded-md text-slate-400 transition-colors select-none [-webkit-touch-callout:none] hover:bg-slate-300/60 hover:text-slate-700 focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:outline-none active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            className="inline-flex h-7 w-7 cursor-grab touch-manipulation items-center justify-center rounded-md text-[color:rgb(31_41_51/0.45)] transition-colors select-none [-webkit-touch-callout:none] hover:bg-[var(--color-rail)]/70 hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none active:cursor-grabbing dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500/70"
           >
             <GripVerticalIcon className="h-4 w-4" />
           </button>
@@ -140,7 +140,7 @@ export function Column({
           'scrollbar-slim flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-2.5 pb-2 transition-colors',
           dragType === 'card' &&
             isOver &&
-            'bg-indigo-100/60 dark:bg-indigo-500/5',
+            'bg-[var(--color-signal)]/8 dark:bg-indigo-500/5',
         )}
       >
         <SortableContext
@@ -150,21 +150,21 @@ export function Column({
           {cards.length === 0 ? (
             <div
               className={cn(
-                'm-0.5 flex flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-4 py-6 text-center transition-colors',
+                'm-0.5 flex flex-1 flex-col items-center justify-center gap-1.5 rounded-md border border-dashed px-4 py-6 text-center transition-colors',
                 dragType === 'card' && isOver
-                  ? 'border-indigo-400 bg-indigo-50/60 dark:border-indigo-500/60 dark:bg-indigo-500/5'
-                  : 'border-slate-300/80 dark:border-slate-700/80',
+                  ? 'border-[var(--color-signal)]/50 bg-[var(--color-signal)]/8 dark:border-indigo-500/60 dark:bg-indigo-500/5'
+                  : 'border-[color:rgb(31_41_51/0.22)] dark:border-slate-700/80',
               )}
             >
               {filteredEmpty ? (
-                <SearchIcon className="h-5 w-5 text-slate-400 dark:text-slate-500" />
+                <SearchIcon className="h-5 w-5 text-[color:rgb(31_41_51/0.45)] dark:text-slate-500" />
               ) : (
-                <PlusIcon className="h-5 w-5 text-slate-400 dark:text-slate-500" />
+                <PlusIcon className="h-5 w-5 text-[color:rgb(31_41_51/0.45)] dark:text-slate-500" />
               )}
-              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              <p className="text-xs font-medium text-[color:rgb(31_41_51/0.7)] dark:text-slate-400">
                 {filteredEmpty ? 'No matching cards' : 'No cards yet'}
               </p>
-              <p className="text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
+              <p className="max-w-[26ch] text-[11px] leading-relaxed text-[color:rgb(31_41_51/0.5)] dark:text-slate-500">
                 {filteredEmpty
                   ? 'Try a different search or clear the filters.'
                   : 'Drop a card here or add one below.'}
@@ -180,11 +180,11 @@ export function Column({
         </SortableContext>
       </div>
 
-      <div className="shrink-0 p-2 pt-1">
+      <div className="shrink-0 border-t border-[var(--color-rail)] p-2 pt-2 dark:border-slate-800">
         <button
           type="button"
           onClick={() => onAddCard(column.id)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-transparent px-2 py-2 text-xs font-medium text-slate-500 transition-colors hover:border-slate-300/70 hover:bg-white hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-500/70 focus-visible:outline-none dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[color:rgb(31_41_51/0.2)] px-2 py-2 text-xs font-medium text-[color:rgb(31_41_51/0.7)] transition-colors hover:border-[var(--color-signal)]/40 hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-indigo-500/70"
         >
           <PlusIcon className="h-4 w-4" />
           Add card

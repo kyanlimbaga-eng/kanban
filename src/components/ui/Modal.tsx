@@ -104,7 +104,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 backdrop-blur-[2px] sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-[#1f2933]/40 backdrop-blur-[1px] sm:items-center sm:p-4 dark:bg-slate-950/50 dark:backdrop-blur-[2px]"
       onMouseDown={(event) => {
         if (closeOnBackdrop && event.target === event.currentTarget) onClose()
       }}
@@ -117,22 +117,22 @@ export function Modal({
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
         className={cn(
-          'animate-modal-in flex max-h-[92dvh] w-full flex-col rounded-t-2xl bg-white shadow-2xl ring-1 ring-slate-950/5 outline-none dark:bg-slate-900 dark:ring-white/10 sm:rounded-2xl',
+          'animate-modal-in flex max-h-[92dvh] w-full flex-col rounded-t-lg border border-[var(--color-rail)] bg-[var(--color-surface)] shadow-[0_18px_50px_rgba(31,41,51,0.18)] outline-none dark:border-slate-800 dark:bg-slate-900 dark:ring-1 dark:ring-white/10 sm:rounded-lg',
           width === 'sm' ? 'sm:max-w-md' : 'sm:max-w-lg',
         )}
       >
-        <div className="flex shrink-0 items-start gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+        <div className="flex shrink-0 items-start gap-3 border-b border-[var(--color-rail)] px-5 py-4 dark:border-slate-800">
           <div className="min-w-0 flex-1">
             <h2
               id={titleId}
-              className="text-base font-semibold text-slate-900 dark:text-white"
+              className="font-serif text-[1.15rem] font-semibold leading-tight text-[var(--color-ink)] dark:text-white"
             >
               {title}
             </h2>
             {description && (
               <p
                 id={descriptionId}
-                className="mt-0.5 text-xs text-slate-500 dark:text-slate-400"
+                className="mt-0.5 text-xs text-[color:rgb(31_41_51/0.62)] dark:text-slate-400"
               >
                 {description}
               </p>
@@ -154,7 +154,7 @@ export function Modal({
         </div>
 
         {footer && (
-          <div className="shrink-0 border-t border-slate-200 px-5 py-3.5 dark:border-slate-800">
+          <div className="shrink-0 border-t border-[var(--color-rail)] px-5 py-3.5 dark:border-slate-800">
             {footer}
           </div>
         )}

@@ -31,10 +31,10 @@ export function FilterBar({
   const active = hasActiveFilters(filters)
 
   return (
-    <div className="shrink-0 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/50 sm:px-5">
+    <div className="shrink-0 border-b border-[var(--color-rail)] bg-[color:rgb(246_244_239/0.92)] px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/50 sm:px-6">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[170px] flex-1 sm:max-w-sm">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <SearchIcon className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[color:rgb(31_41_51/0.45)] dark:text-slate-400" />
           <Input
             type="text"
             role="searchbox"
@@ -50,7 +50,7 @@ export function FilterBar({
               type="button"
               onClick={() => onSearchChange('')}
               aria-label="Clear search"
-              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none dark:hover:bg-slate-800 dark:hover:text-slate-200"
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1 text-[color:rgb(31_41_51/0.5)] transition hover:bg-[var(--color-rail)]/60 hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-indigo-500/60 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
             >
               <XIcon className="h-3.5 w-3.5" />
             </button>
@@ -106,7 +106,7 @@ export function FilterBar({
           </Button>
         )}
 
-        <span className="hidden text-xs whitespace-nowrap text-slate-400 lg:inline dark:text-slate-500">
+        <span className="hidden text-xs whitespace-nowrap text-[color:rgb(31_41_51/0.55)] lg:inline dark:text-slate-500">
           {active
             ? `${visibleCount} of ${totalCount} cards`
             : `${totalCount} ${totalCount === 1 ? 'card' : 'cards'}`}

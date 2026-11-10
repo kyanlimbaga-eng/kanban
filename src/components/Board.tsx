@@ -43,12 +43,12 @@ import { Toast } from './ui/Toast'
 import type { ToastMessage } from './ui/Toast'
 
 const COLUMN_ACCENTS = [
-  'bg-indigo-500',
-  'bg-amber-500',
-  'bg-sky-500',
-  'bg-emerald-500',
-  'bg-rose-500',
-  'bg-violet-500',
+  'bg-[var(--color-signal)]',
+  'bg-[#8a6a2f]',
+  'bg-[#5b6f7a]',
+  'bg-[#6b7c5a]',
+  'bg-[var(--color-alert)]',
+  'bg-[#6f6778]',
 ]
 
 type CardModalState =
@@ -367,7 +367,7 @@ export function Board() {
   }
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-slate-100 dark:bg-slate-950">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-paper)] text-[var(--color-ink)] dark:bg-slate-950 dark:text-slate-100">
       <AppHeader
         onExport={handleExport}
         onImportClick={() => fileInputRef.current?.click()}
@@ -396,7 +396,7 @@ export function Board() {
       >
         <main
           ref={boardRef}
-          className="scrollbar-slim board-surface min-h-0 flex-1 overflow-x-auto overflow-y-hidden"
+          className="scrollbar-slim board-surface min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-[var(--color-paper)] dark:bg-slate-950"
         >
           {orderedColumns.length === 0 ? (
             <BoardEmptyState

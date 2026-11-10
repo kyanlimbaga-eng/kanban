@@ -26,15 +26,15 @@ export function AppHeader({
   const toggleTheme = useUiStore((state) => state.toggleTheme)
 
   return (
-    <header className="shrink-0 border-b border-slate-200/80 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
-      <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
-        <LogoMark className="h-9 w-9 shrink-0 rounded-xl shadow-sm" />
+    <header className="shrink-0 border-b border-[var(--color-rail)] bg-[var(--color-paper)]/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+      <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
+        <LogoMark className="h-9 w-9 shrink-0 rounded-md ring-1 ring-[var(--color-rail)] dark:ring-slate-800" />
         <div className="min-w-0">
-          <h1 className="truncate text-[15px] leading-tight font-semibold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="truncate text-[1.2rem] leading-tight font-semibold tracking-tight text-[var(--color-ink)] dark:text-white">
             Flowboard
           </h1>
-          <p className="hidden text-[11px] text-slate-500 sm:block dark:text-slate-400">
-            A calm place to plan your work
+          <p className="hidden text-[11px] text-[color:rgb(31_41_51/0.65)] sm:block dark:text-slate-400">
+            Plan work across clear lanes
           </p>
         </div>
 
@@ -72,7 +72,7 @@ export function AppHeader({
           >
             <SettingsIcon className="h-4 w-4" />
           </Button>
-          <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-800" />
+          <div className="mx-1 h-5 w-px bg-[var(--color-rail)] dark:bg-slate-800" />
           <Button
             variant="ghost"
             size="icon"

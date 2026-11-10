@@ -1,8 +1,11 @@
-import { useId, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
-import type { Card as CardModel, Priority } from '../types'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { api } from '../services/api'
+import { socket } from '../services/socket'
+import { useAuthStore } from '../store/authStore'
 import { useBoardStore } from '../store/boardStore'
+import type { Card as CardModel, Comment, Priority } from '../types'
 import { cn } from '../utils/cn'
+import { formatRelativeTime } from '../utils/dates'
 import { getLabelClasses, normalizeLabels } from '../utils/labels'
 import { PRIORITIES, PRIORITY_LABELS } from '../utils/priority'
 import { Button } from './ui/Button'
@@ -29,6 +32,7 @@ export function CardModal({
   const updateCard = useBoardStore((state) => state.updateCard)
   const deleteCard = useBoardStore((state) => state.deleteCard)
   const boardLabels = useBoardStore((state) => state.labels)
+  const currentUser = useAuthStore((state) => state.user)
 
   const formId = useId()
   const titleId = useId()
@@ -39,6 +43,7 @@ export function CardModal({
   const labelsId = useId()
   const titleRef = useRef<HTMLInputElement>(null)
 
+  const [activeTab, setActiveTab] = useState<'details' | 'comments'>('details')
   const [title, setTitle] = useState(card?.title ?? '')
   const [description, setDescription] = useState(card?.description ?? '')
   const [priority, setPriority] = useState<Priority>(card?.priority ?? 'medium')
@@ -46,13 +51,87 @@ export function CardModal({
   const [labels, setLabels] = useState<string[]>(card?.labels ?? [])
   const [assignee, setAssignee] = useState(card?.assignee ?? '')
   const [titleError, setTitleError] = useState('')
+  const [submitError, setSubmitError] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false)
+  const [loadingComments, setLoadingComments] = useState(() => Boolean(card))
 
   const availableLabels = boardLabels.filter(
     (label) => !labels.some((selected) => selected.toLowerCase() === label.toLowerCase()),
   )
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  // Fetch comments when card is opened
+  useEffect(() => {
+    if (!card) return
+    let active = true
+
+    api.getComments(card.id)
+      .then((res) => {
+        if (active) setComments(res.comments)
+      })
+      .catch((err) => console.error('Failed to load comments:', err))
+      .finally(() => {
+        if (active) setLoadingComments(false)
+      })
+
+    // Listen to real-time comment events
+    const unsub = socket.onEvent((event) => {
+      if (event.type === 'COMMENT_ADDED') {
+        const comment = event.payload as Comment
+        if (comment.cardId === card.id) {
+          setComments((prev) => {
+            if (prev.some((c) => c.id === comment.id)) return prev
+            return [...prev, comment]
+          })
+        }
+      } else if (event.type === 'COMMENT_DELETED') {
+        const { cardId, commentId } = event.payload as { cardId: string; commentId: string }
+        if (cardId === card.id) {
+          setComments((prev) => prev.filter((c) => c.id !== commentId))
+        }
+      }
+    })
+
+    return () => {
+      active = false
+      unsub()
+    }
+  }, [card])
+
+  async function handleAddComment(e: FormEvent) {
+    e.preventDefault()
+    if (!card || !commentText.trim() || isSubmittingComment) return
+
+    setIsSubmittingComment(true)
+    try {
+      const newComment = await api.addComment(card.id, commentText.trim())
+      setComments((prev) => {
+        if (prev.some((c) => c.id === newComment.id)) return prev
+        return [...prev, newComment]
+      })
+      setCommentText('')
+    } catch (err) {
+      console.error('Failed to post comment:', err)
+    } finally {
+      setIsSubmittingComment(false)
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!card) return
+    try {
+      await api.deleteComment(card.id, commentId)
+      setComments((prev) => prev.filter((c) => c.id !== commentId))
+    } catch (err) {
+      console.error('Failed to delete comment:', err)
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (readOnly) {
       onClose()
@@ -74,16 +153,24 @@ export function CardModal({
       assignee,
     }
 
-    if (card) {
-      updateCard(card.id, payload)
-    } else {
-      addCard({ columnId, ...payload })
+    try {
+      if (card) {
+        await updateCard(card.id, payload)
+      } else {
+        await addCard({ columnId, ...payload })
+      }
+      onClose()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save changes.'
+      setSubmitError(msg)
     }
-    onClose()
   }
 
   const footer = readOnly ? (
-    <div className="flex items-center justify-end">
+    <div className="flex items-center justify-between">
+      <span className="text-xs text-slate-500 dark:text-slate-400">
+        Viewing card (Non-admin view-only mode)
+      </span>
       <Button variant="secondary" onClick={onClose}>
         Close
       </Button>
@@ -142,133 +229,245 @@ export function CardModal({
       description={`in ${columnTitle}`}
       footer={footer}
     >
-      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
-        <Field label="Title" htmlFor={titleId} hint="Required" error={titleError}>
-          <Input
-            ref={titleRef}
-            id={titleId}
-            data-autofocus
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value)
-              if (titleError) setTitleError('')
-            }}
-            placeholder="What needs doing?"
-            maxLength={200}
-            aria-invalid={Boolean(titleError)}
-            disabled={readOnly}
-          />
-        </Field>
+      {/* Navigation tabs: Details vs. Updates / Comments (Monday.com style) */}
+      {card && (
+        <div className="mb-4 flex border-b border-[var(--color-rail)] dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab('details')}
+            className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
+              activeTab === 'details'
+                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            Task Details
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('comments')}
+            className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
+              activeTab === 'comments'
+                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+            }`}
+          >
+            Activity & Updates {comments.length > 0 && `(${comments.length})`}
+          </button>
+        </div>
+      )}
 
-        <Field label="Description" htmlFor={descriptionId}>
-          <Textarea
-            id={descriptionId}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Add a little context, links, or acceptance criteria…"
-            rows={4}
-            disabled={readOnly}
-          />
-        </Field>
+      {submitError && (
+        <div className="mb-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-700 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:ring-rose-800">
+          {submitError}
+        </div>
+      )}
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Priority" htmlFor={priorityId}>
-            <Select
-              id={priorityId}
-              value={priority}
-              onChange={(event) => setPriority(event.target.value as Priority)}
-              disabled={readOnly}
-            >
-              {PRIORITIES.map((option) => (
-                <option key={option} value={option}>
-                  {PRIORITY_LABELS[option]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field label="Due date" htmlFor={dueDateId}>
+      {activeTab === 'details' ? (
+        <form id={formId} onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Title" htmlFor={titleId} hint="Required" error={titleError}>
             <Input
-              id={dueDateId}
-              type="date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
+              ref={titleRef}
+              id={titleId}
+              data-autofocus
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value)
+                if (titleError) setTitleError('')
+                if (submitError) setSubmitError('')
+              }}
+              placeholder="What needs doing?"
+              maxLength={200}
+              aria-invalid={Boolean(titleError)}
               disabled={readOnly}
             />
           </Field>
-        </div>
 
-        <Field label="Labels" htmlFor={labelsId} hint="Choose from your labels">
-          <div className="space-y-2">
-            {labels.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {labels.map((label) => (
-                  <span
-                    key={label}
-                    className={cn(
-                      'inline-flex max-w-[190px] items-center gap-0.5 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium ring-1 ring-inset',
-                      getLabelClasses(label),
-                    )}
-                  >
-                    <span className="truncate">{label}</span>
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setLabels((current) =>
-                            current.filter((item) => item.toLowerCase() !== label.toLowerCase()),
-                          )
-                        }
-                        aria-label={`Remove ${label} label`}
-                        className="rounded-full p-0.5 opacity-70 transition hover:bg-black/10 hover:opacity-100 focus-visible:outline-none dark:hover:bg-white/10"
-                      >
-                        <XIcon className="h-3 w-3" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
+          <Field label="Description" htmlFor={descriptionId}>
+            <Textarea
+              id={descriptionId}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Add a little context, links, or acceptance criteria…"
+              rows={4}
+              disabled={readOnly}
+            />
+          </Field>
 
-            {!readOnly && availableLabels.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Priority" htmlFor={priorityId}>
               <Select
-                id={labelsId}
-                value=""
-                onChange={(event) => {
-                  const selected = event.target.value
-                  if (!selected) return
-                  setLabels((current) => normalizeLabels([...current, selected]))
-                }}
-                aria-label="Add a label"
+                id={priorityId}
+                value={priority}
+                onChange={(event) => setPriority(event.target.value as Priority)}
+                disabled={readOnly}
               >
-                <option value="">Add a label…</option>
-                {availableLabels.map((label) => (
-                  <option key={label} value={label}>
-                    {label}
+                {PRIORITIES.map((option) => (
+                  <option key={option} value={option}>
+                    {PRIORITY_LABELS[option]}
                   </option>
                 ))}
               </Select>
-            ) : !readOnly ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                No labels available. Create them in Settings.
-              </p>
-            ) : labels.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500">No labels.</p>
-            ) : null}
-          </div>
-        </Field>
+            </Field>
 
-        <Field label="Assignee" htmlFor={assigneeId}>
-          <Input
-            id={assigneeId}
-            value={assignee}
-            onChange={(event) => setAssignee(event.target.value)}
-            placeholder="e.g. Alex Morgan"
-            maxLength={100}
-            disabled={readOnly}
-          />
-        </Field>
-      </form>
+            <Field label="Due date" htmlFor={dueDateId}>
+              <Input
+                id={dueDateId}
+                type="date"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+                disabled={readOnly}
+              />
+            </Field>
+          </div>
+
+          <Field label="Labels" htmlFor={labelsId} hint="Choose from your labels">
+            <div className="space-y-2">
+              {labels.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {labels.map((label) => (
+                    <span
+                      key={label}
+                      className={cn(
+                        'inline-flex max-w-[190px] items-center gap-0.5 rounded-full py-0.5 pr-0.5 pl-2 text-[11px] font-medium ring-1 ring-inset',
+                        getLabelClasses(label),
+                      )}
+                    >
+                      <span className="truncate">{label}</span>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLabels((current) =>
+                              current.filter((item) => item.toLowerCase() !== label.toLowerCase()),
+                            )
+                          }
+                          aria-label={`Remove ${label} label`}
+                          className="rounded-full p-0.5 opacity-70 transition hover:bg-black/10 hover:opacity-100 focus-visible:outline-none dark:hover:bg-white/10"
+                        >
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {!readOnly && availableLabels.length > 0 ? (
+                <Select
+                  id={labelsId}
+                  value=""
+                  onChange={(event) => {
+                    const selected = event.target.value
+                    if (!selected) return
+                    setLabels((current) => normalizeLabels([...current, selected]))
+                  }}
+                  aria-label="Add a label"
+                >
+                  <option value="">Add a label…</option>
+                  {availableLabels.map((label) => (
+                    <option key={label} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              ) : !readOnly ? (
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  No labels available. Create them in Settings.
+                </p>
+              ) : labels.length === 0 ? (
+                <p className="text-xs text-slate-400 dark:text-slate-500">No labels.</p>
+              ) : null}
+            </div>
+          </Field>
+
+          <Field label="Assignee" htmlFor={assigneeId}>
+            <Input
+              id={assigneeId}
+              value={assignee}
+              onChange={(event) => setAssignee(event.target.value)}
+              placeholder="e.g. Alex Morgan"
+              maxLength={100}
+              disabled={readOnly}
+            />
+          </Field>
+        </form>
+      ) : (
+        /* Monday.com style activity & comments feed */
+        <div className="space-y-4">
+          <form onSubmit={handleAddComment} className="space-y-2">
+            <Textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Write an update or reply for the team on this task…"
+              rows={3}
+              required
+            />
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={!commentText.trim() || isSubmittingComment}
+              >
+                {isSubmittingComment ? 'Posting…' : 'Post update'}
+              </Button>
+            </div>
+          </form>
+
+          <div className="mt-4 space-y-3">
+            <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Team Updates ({comments.length})
+            </h4>
+
+            {loadingComments ? (
+              <p className="py-4 text-center text-xs text-slate-400">Loading updates…</p>
+            ) : comments.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center dark:border-slate-800">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  No updates yet. Post the first update to start collaborating!
+                </p>
+              </div>
+            ) : (
+              <ul className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
+                {comments.map((c) => {
+                  const canDelete = currentUser?.role === 'admin' || c.userId === currentUser?.id
+                  return (
+                    <li
+                      key={c.id}
+                      className="rounded-lg border border-[var(--color-rail)] bg-slate-50/60 p-3 text-xs dark:border-slate-800 dark:bg-slate-900/60"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">
+                            {c.displayName || c.username}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {formatRelativeTime(c.createdAt)}
+                          </span>
+                        </div>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteComment(c.id)}
+                            className="rounded p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                            title="Delete comment"
+                          >
+                            <TrashIcon className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                        {c.content}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

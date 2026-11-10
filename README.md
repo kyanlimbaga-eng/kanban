@@ -1,165 +1,98 @@
-# Flowboard
+# Flowboard LAN
 
-Flowboard is a local-first Kanban board built with React, TypeScript, and Tailwind CSS. It keeps your board in the browser, so you can plan work without an account, backend, or network round-trips.
+Flowboard is a secure, real-time project management and Kanban tool similar to Monday.com, engineered for collaboration across local area networks (LAN) without requiring an internet connection.
 
 ## Features
 
-- Default columns: **To Do**, **In Progress**, **Review**, **Done**
-- Add, rename, delete, and drag to reorder columns
-- Add, edit, and delete cards with title, description, priority, due date, labels, and assignee
-- Drag and drop cards between columns and reorder cards within a column
-- Click any card to open the detail editor
-- Manage labels in Settings: create, rename, merge, delete, and see usage counts
-- Search plus label and priority filters
-- Overdue and due-today indicators
-- Local browser persistence (SQLite WASM with `localStorage` fallback)
-- JSON export and validated JSON import
-- Persisted light/dark theme
-- Responsive layout with fluid desktop columns and horizontally scrollable columns on small screens
-- Keyboard-accessible drag and drop
+- **LAN Real-Time Collaboration:** Changes to cards, columns, reordering, and labels broadcast instantly across all connected computers on the LAN over WebSockets.
+- **Card Updates & Discussions (Monday.com style):** Team members can post discussion updates and comments on cards with timestamps and author names.
+- **Optimistic Concurrency & Conflict Prevention:** Card version checks prevent silent overwrites when multiple team members edit records concurrently.
+- **Role-Based Access Control (RBAC):**
+  - **Administrators:** Full access to manage columns, cards, labels, user accounts, and review audit logs.
+  - **Viewers:** Default view-only access to the Kanban board with full ability to view live updates and post comments.
+- **Security & Hardening:**
+  - Password hashing using cryptographic `scrypt` with individual random salts.
+  - Secure HTTP-only session cookies with configurable expiration.
+  - Rate-limiting protection on login endpoints to block brute-force attacks.
+  - 100% parameterized SQL queries (`node:sqlite`) preventing SQL injection.
+  - Content Security Policy, X-Frame-Options, and security headers.
+  - Comprehensive administrative audit trail.
+- **Centralized Persistence:** SQLite with Write-Ahead Logging (`WAL`) stored centrally on the server (persisted in `./data/flowboard.db`).
+- **Connection Resilience:** Automatic reconnection with exponential backoff and automatic state re-synchronization.
+- **Network Presence:** Real-time indicator ("Live", "Reconnecting", "Offline") and count of online LAN teammates.
 
-A small starter board is added on first run. You can delete or replace it at any time.
+## Default Accounts
 
-## Tech stack
+| Role | Username | Password | Access Level |
+| --- | --- | --- | --- |
+| **Administrator** | `admin` | `4dmin@2026!` | Full administrative and board management control |
+| **Viewer** | `viewer` | `viewer123` | View-only board access with comment collaboration |
 
-- [Vite](https://vite.dev/) + [React](https://react.dev/) + TypeScript
-- [Tailwind CSS v4](https://tailwindcss.com/)
-- [@dnd-kit](https://dndkit.com/) for drag and drop
-- [Zustand](https://zustand.docs.pmnd.rs/) with `persist` middleware for state
-- [SQLite Wasm](https://sqlite.org/wasm/doc/trunk/index.md) for browser-side persistence
-- [date-fns](https://date-fns.org/) for date handling
-- [nanoid](https://github.com/ai/nanoid) for ID generation
-- [oxlint](https://oxc.rs/) for linting
+*Admins can create additional accounts and reset passwords in **Settings & Administration → User Accounts**.*
+
+## Tech Stack
+
+- **Frontend:** React 19, TypeScript, Tailwind CSS v4, Zustand, @dnd-kit
+- **Backend:** Node.js, Express, `ws` (WebSockets), `node:sqlite` (Node standard library SQLite)
+- **Deployment:** Docker & Docker Compose
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 20+ (22+ recommended)
+- [Node.js](https://nodejs.org/) 22+ (Node 24 recommended)
 - npm
 
-## Local setup
+## Local Setup & Development
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Start the dev server with HMR
+# 2. Start the backend server (runs on port 8091)
+npm run server
+
+# 3. In another terminal, start the Vite frontend with dev proxy (runs on port 5173)
 npm run dev
 ```
 
-Vite prints a local URL (usually `http://localhost:5173`).
+Open `http://localhost:5173` or `http://<your-lan-ip>:5173` on any computer on the local network.
 
-## Available scripts
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Start the Vite dev server |
-| `npm run build` | Type-check and build for production (`tsc -b && vite build`) |
-| `npm run preview` | Serve the production build locally |
-| `npm run lint` | Run oxlint |
-
-## Using Flowboard
-
-- **Cards:** Click a card (or its pencil button) to edit it. Use **Add card** at the bottom of a column to create one. Delete a card from inside the card editor.
-- **Dragging:** Drag cards between columns or onto another card to reorder. Use the grip handle in a column header to reorder columns. On touch screens, press and hold a card briefly before moving it.
-- **Keyboard:** Focus a card and press `Enter` to edit it. Press `Space` to pick it up, use arrow keys to move it, press `Space` to drop it, or press `Escape` to cancel. Column handles work the same way.
-- **Filters:** Search matches card titles, descriptions, labels, and assignees. Label and priority filters combine with search. The result count appears in the toolbar.
-- **Dark mode:** Use the sun/moon button in the header. Your choice is remembered.
-- **Export/import:** **Export** downloads the current board as JSON. **Import** validates the file and asks for confirmation before replacing the current board. Export a backup first if needed.
-
-## Persistence
-
-There is no backend. Flowboard stores data in the browser using SQLite (WebAssembly) with a `localStorage` fallback:
-
-- `flowboard.board` stores columns, cards, and labels
-- `flowboard.ui` stores the selected theme
-
-SQLite initializes asynchronously, so the app shows a short loading screen on first render. If SQLite cannot initialize (for example: unsupported browser, private mode, storage quota issue, or WASM load failure), Flowboard falls back to `localStorage`.
-
-Clearing site data resets the app to the starter board. Because storage is per browser and per origin, boards are not shared across devices. Use export/import to move data.
-
-## Project structure
-
-```text
-src/
-├─ components/        # App components and modals
-│  └─ ui/             # Reusable UI primitives
-├─ db/                # SQLite WASM initialization and storage access
-├─ store/             # Zustand stores and storage adapter
-├─ types/             # Shared TypeScript types
-├─ utils/             # Dates, filtering, labels, import/export, helpers
-├─ App.tsx            # App shell and hydration/theme handling
-├─ index.css          # Global styles
-└─ main.tsx           # Entry point
-```
-
-## Deployment
-
-The app is a static single-page site. The build output is written to `dist/`.
-
-### Vercel
-
-1. Push the project to a Git repository.
-2. In Vercel, choose **Add New → Project** and import the repository.
-3. Vercel detects Vite automatically. Confirm:
-   - **Framework preset:** Vite
-   - **Build command:** `npm run build`
-   - **Output directory:** `dist`
-4. Deploy. No environment variables are required.
-
-You can also deploy with the CLI:
+## Production Run (Single Process)
 
 ```bash
-npx vercel --prod
-```
-
-### Netlify
-
-1. Push the project to a Git repository.
-2. In Netlify, choose **Add new site → Import existing project**.
-3. Set:
-   - **Build command:** `npm run build`
-   - **Publish directory:** `dist`
-4. Deploy. If Netlify uses an older Node version, set `NODE_VERSION=22` in site environment variables.
-
-Or deploy the built output directly:
-
-```bash
+# Build frontend and start integrated server hosting API, WebSockets, and SPA
 npm run build
-npx netlify deploy --prod --dir=dist
+npm start
 ```
 
-No SPA redirect is needed because the app has no client-side router.
+Access the board at `http://<your-lan-ip>:8091`.
 
-## Export format
+## Docker Deployment
 
-Exported JSON contains the full board:
+To run as a self-contained container on your central server host:
 
-```json
-{
-  "columns": [
-    { "id": "todo", "title": "To Do", "order": 0 }
-  ],
-  "cards": [
-    {
-      "id": "welcome",
-      "columnId": "todo",
-      "title": "Welcome to Flowboard",
-      "description": "This is a sample card. Click it to edit or drag it around.",
-      "priority": "medium",
-      "dueDate": null,
-      "labels": ["Example"],
-      "assignee": "Alex",
-      "position": 0
-    }
-  ],
-  "labels": ["Example"]
-}
+```bash
+docker compose up -d --build
 ```
 
-Notes:
+The application will be accessible to all authorized devices on your local network at:
+`http://<server-lan-ip>:8091`
 
-- `priority` must be `low`, `medium`, or `high`.
-- `dueDate` must be `null` or a valid `YYYY-MM-DD` date.
-- Column and card IDs must be unique strings, and each card's `columnId` must reference an existing column.
-- Positions are normalized per column.
-- Imports larger than 2 MB are rejected.
+The SQLite database is stored in `./data/flowboard.db` and is preserved across container restarts.
+
+## Verification & Tests
+
+Run the automated integration and security test suite:
+
+```bash
+npm test
+```
+
+This verifies:
+1. Health check & protected routes
+2. Rate-limiting brute force lockout (5 attempts)
+3. Cryptographic authentication & session management
+4. Role-based access control (Admin vs. Viewer)
+5. SQL injection immunity
+6. Optimistic concurrency conflict rejection (409 Conflict)
+7. Card comment collaboration
+8. Security audit trail logging

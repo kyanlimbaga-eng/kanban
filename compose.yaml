@@ -5,4 +5,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8091:80"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=80
+      - HOST=0.0.0.0
+      - NODE_ENV=production
     restart: unless-stopped

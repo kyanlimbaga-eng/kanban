@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Board } from './components/Board'
-import { PasscodeGate } from './components/PasscodeGate'
+import { LoginModal } from './components/LoginModal'
+import { useAuthStore } from './store/authStore'
 import { useBoardStore } from './store/boardStore'
 import { useUiStore } from './store/uiStore'
 
@@ -10,49 +11,29 @@ function LoadingScreen() {
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 dark:border-slate-700 dark:border-t-indigo-400" />
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Loading your board…
+          Connecting to Flowboard LAN…
         </p>
       </div>
     </div>
   )
 }
 
-function normalizePath(pathname: string) {
-  if (pathname.length > 1 && pathname.endsWith('/')) {
-    return pathname.slice(0, -1)
-  }
-  return pathname
-}
-
 function App() {
-  const [hydrated, setHydrated] = useState(
-    () => useBoardStore.persist.hasHydrated() && useUiStore.persist.hasHydrated(),
-  )
+  const user = useAuthStore((state) => state.user)
+  const isAuthLoading = useAuthStore((state) => state.isLoading)
+  const checkAuth = useAuthStore((state) => state.checkAuth)
   const theme = useUiStore((state) => state.theme)
-  const adminUnlocked = useUiStore((state) => state.adminUnlocked)
-  const unlockAdmin = useUiStore((state) => state.unlockAdmin)
-  const pathname = normalizePath(window.location.pathname)
-  const isAdminRoute = pathname === '/admin'
-  const readOnly = !isAdminRoute || !adminUnlocked
+  const fetchBoard = useBoardStore((state) => state.fetchBoard)
 
   useEffect(() => {
-    if (hydrated) return
+    checkAuth()
+  }, [checkAuth])
 
-    const check = () => {
-      if (useBoardStore.persist.hasHydrated() && useUiStore.persist.hasHydrated()) {
-        setHydrated(true)
-      }
+  useEffect(() => {
+    if (user) {
+      fetchBoard()
     }
-
-    const unsubBoard = useBoardStore.persist.onFinishHydration(check)
-    const unsubUi = useUiStore.persist.onFinishHydration(check)
-    check()
-
-    return () => {
-      unsubBoard()
-      unsubUi()
-    }
-  }, [hydrated])
+  }, [user, fetchBoard])
 
   useEffect(() => {
     const root = document.documentElement
@@ -62,13 +43,16 @@ function App() {
       ?.setAttribute('content', theme === 'dark' ? '#020617' : '#f1f5f9')
   }, [theme])
 
-  if (!hydrated) {
+  if (isAuthLoading) {
     return <LoadingScreen />
   }
 
-  if (isAdminRoute && !adminUnlocked) {
-    return <PasscodeGate onUnlock={unlockAdmin} />
+  if (!user) {
+    return <LoginModal />
   }
+
+  // Enforce Role-Based Access Control: Admin has full access, Viewers are view-only
+  const readOnly = user.role !== 'admin'
 
   return <Board readOnly={readOnly} />
 }

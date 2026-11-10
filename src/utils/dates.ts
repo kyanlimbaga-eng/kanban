@@ -42,3 +42,19 @@ export function formatDueDate(dueDate: string): string {
     ? format(date, 'MMM d')
     : format(date, 'MMM d, yyyy')
 }
+
+export function formatRelativeTime(isoString: string): string {
+  try {
+    const diffSeconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000)
+    if (diffSeconds < 60) return 'Just now'
+    const diffMinutes = Math.floor(diffSeconds / 60)
+    if (diffMinutes < 60) return `${diffMinutes}m ago`
+    const diffHours = Math.floor(diffMinutes / 60)
+    if (diffHours < 24) return `${diffHours}h ago`
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays < 7) return `${diffDays}d ago`
+    return format(new Date(isoString), 'MMM d, h:mm a')
+  } catch {
+    return 'Recently'
+  }
+}

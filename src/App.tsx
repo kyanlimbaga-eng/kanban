@@ -22,6 +22,7 @@ function App() {
   const user = useAuthStore((state) => state.user)
   const isAuthLoading = useAuthStore((state) => state.isLoading)
   const checkAuth = useAuthStore((state) => state.checkAuth)
+  const adminLoginRequested = useAuthStore((state) => state.adminLoginRequested)
   const theme = useUiStore((state) => state.theme)
   const fetchBoard = useBoardStore((state) => state.fetchBoard)
 
@@ -47,7 +48,7 @@ function App() {
     return <LoadingScreen />
   }
 
-  if (!user) {
+  if (!user || adminLoginRequested) {
     return <LoginModal />
   }
 

@@ -7,29 +7,43 @@ interface AuthState {
   user: User | null
   isLoading: boolean
   error: string | null
+  adminLoginRequested: boolean
   checkAuth: () => Promise<void>
   login: (username: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
+  requestAdminLogin: () => Promise<void>
   clearError: () => void
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   error: null,
+  adminLoginRequested: false,
 
   checkAuth: async () => {
     set({ isLoading: true, error: null })
     try {
       const res = await api.getMe()
-      set({ user: res.user, isLoading: false })
       if (res.user) {
+        set({ user: res.user, isLoading: false })
         socket.connect()
       } else {
-        socket.disconnect()
+        if (get().adminLoginRequested) {
+          set({ user: null, isLoading: false })
+          socket.disconnect()
+        } else {
+          const viewerRes = await api.login('viewer', 'viewer123')
+          set({ user: viewerRes.user, isLoading: false, error: null })
+          socket.connect()
+        }
       }
     } catch {
-      set({ user: null, isLoading: false })
+      if (get().adminLoginRequested) {
+        set({ user: null, isLoading: false })
+      } else {
+        set({ user: null, isLoading: false })
+      }
       socket.disconnect()
     }
   },
@@ -38,7 +52,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null })
     try {
       const res = await api.login(username, password)
-      set({ user: res.user, isLoading: false, error: null })
+      set({ user: res.user, isLoading: false, error: null, adminLoginRequested: false })
       socket.connect()
       return true
     } catch (err: unknown) {
@@ -49,6 +63,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
+    try {
+      await api.logout()
+    } finally {
+      set({ user: null, adminLoginRequested: false })
+      socket.disconnect()
+      await get().checkAuth()
+    }
+  },
+
+  requestAdminLogin: async () => {
+    set({ adminLoginRequested: true, error: null })
     try {
       await api.logout()
     } finally {

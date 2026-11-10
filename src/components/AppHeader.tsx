@@ -32,6 +32,7 @@ export function AppHeader({
   const toggleTheme = useUiStore((state) => state.toggleTheme)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
+  const requestAdminLogin = useAuthStore((state) => state.requestAdminLogin)
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(() => socket.getStatus())
   const [onlineUsers, setOnlineUsers] = useState<User[]>(() => socket.getOnlineUsers())
@@ -163,15 +164,27 @@ export function AppHeader({
             </>
           )}
 
-          {user && (
+          {user && user.role === 'admin' && (
             <Button
               variant="ghost"
               size="sm"
               onClick={logout}
               className="h-8 text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-300"
-              title="Sign out of current account"
+              title="Sign out of admin account"
             >
               Sign out
+            </Button>
+          )}
+
+          {user && user.role !== 'admin' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={requestAdminLogin}
+              className="h-8 text-xs text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300"
+              title="Sign in as administrator"
+            >
+              Admin sign in
             </Button>
           )}
 

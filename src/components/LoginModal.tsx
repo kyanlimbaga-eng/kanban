@@ -24,12 +24,6 @@ export function LoginModal() {
     }
   }
 
-  function fillPreset(u: string, p: string) {
-    setUsername(u)
-    setPassword(p)
-    clearError()
-  }
-
   return (
     <div className="flex min-h-dvh items-center justify-center bg-[var(--color-paper)] px-4 text-[var(--color-ink)] dark:bg-slate-950 dark:text-slate-100">
       <div className="w-full max-w-md rounded-xl border border-[var(--color-rail)] bg-[var(--color-surface)] p-7 shadow-lg dark:border-slate-800 dark:bg-slate-900">
@@ -66,7 +60,7 @@ export function LoginModal() {
                 if (error) clearError()
               }}
               autoComplete="username"
-              placeholder="e.g. admin or viewer"
+              placeholder="Username"
               data-autofocus
               required
             />
@@ -82,7 +76,7 @@ export function LoginModal() {
                 if (error) clearError()
               }}
               autoComplete="current-password"
-              placeholder="Enter your password"
+              placeholder="Password"
               required
             />
           </Field>
@@ -96,32 +90,6 @@ export function LoginModal() {
             {isSubmitting ? 'Signing in…' : 'Sign in to board'}
           </Button>
         </form>
-
-        <div className="mt-6 border-t border-[var(--color-rail)] pt-4 dark:border-slate-800">
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-            Quick sign-in credentials:
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => fillPreset('admin', '4dmin@2026!')}
-              className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:text-indigo-300"
-            >
-              <span className="font-semibold">Admin:</span> admin / 4dmin@2026!
-            </button>
-            <button
-              type="button"
-              onClick={() => fillPreset('viewer', 'viewer123')}
-              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
-            >
-              <span className="font-semibold">Viewer:</span> viewer / viewer123
-            </button>
-          </div>
-          <p className="mt-3 text-[11px] text-slate-400 dark:text-slate-500">
-            • Admins have full editing permissions.<br />
-            • Viewers have view-only board permissions with comment collaboration.
-          </p>
-        </div>
       </div>
     </div>
   )

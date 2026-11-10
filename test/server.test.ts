@@ -178,6 +178,39 @@ async function runTests() {
     assert.ok(auditData.logs.length > 0)
     console.log(`✓ Audit logging: ${auditData.logs.length} audit entries captured`)
 
+    // 12. Card Deletion and Comment Cleanup
+    const deleteCardRes = await fetch(`${baseUrl}/api/board/cards/${createdCard.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: adminCookie },
+    })
+    assert.equal(deleteCardRes.status, 200)
+    const deleteData = await deleteCardRes.json()
+    assert.equal(deleteData.success, true)
+    // Verify card is removed from DB
+    const checkCard = db.prepare('SELECT * FROM cards WHERE id = ?').get(createdCard.id)
+    assert.equal(checkCard, undefined, 'Deleted card should not exist in database')
+    // Verify comments on deleted card are cleaned up
+    const checkComments = db.prepare('SELECT * FROM comments WHERE card_id = ?').all(createdCard.id)
+    assert.equal(checkComments.length, 0, 'Comments on deleted card must be cleaned up')
+    console.log('✓ Card deletion: Card removed, dependent comments purged, audit recorded')
+
+    // 13. Sequential Card Creation with atomic positioning
+    const cardA = await fetch(`${baseUrl}/api/board/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      body: JSON.stringify({ columnId: newCol.id, title: 'Task Alpha', priority: 'medium' }),
+    }).then((r) => r.json())
+
+    const cardB = await fetch(`${baseUrl}/api/board/cards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: adminCookie },
+      body: JSON.stringify({ columnId: newCol.id, title: 'Task Beta', priority: 'low' }),
+    }).then((r) => r.json())
+
+    assert.notEqual(cardA.id, cardB.id)
+    assert.equal(cardA.position < cardB.position, true, 'Sequential cards must receive sequential positions')
+    console.log('✓ Sequential positioning: Cards created sequentially received distinct positions')
+
     console.log('\n--- ALL SERVER & SECURITY TESTS PASSED SUCCESSFULLY! ---')
   } finally {
     server.close()

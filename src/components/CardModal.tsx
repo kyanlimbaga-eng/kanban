@@ -11,7 +11,7 @@ import { PRIORITIES, PRIORITY_LABELS } from '../utils/priority'
 import { Button } from './ui/Button'
 import { Field, Input, Select, Textarea } from './ui/Input'
 import { Modal } from './ui/Modal'
-import { TrashIcon, XIcon } from './ui/icons'
+import { CopyIcon, TrashIcon, XIcon } from './ui/icons'
 
 interface CardModalProps {
   readOnly: boolean
@@ -29,6 +29,7 @@ export function CardModal({
   onClose,
 }: CardModalProps) {
   const addCard = useBoardStore((state) => state.addCard)
+  const duplicateCard = useBoardStore((state) => state.duplicateCard)
   const updateCard = useBoardStore((state) => state.updateCard)
   const deleteCard = useBoardStore((state) => state.deleteCard)
   const boardLabels = useBoardStore((state) => state.labels)
@@ -53,6 +54,8 @@ export function CardModal({
   const [titleError, setTitleError] = useState('')
   const [submitError, setSubmitError] = useState('')
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Comments state
   const [comments, setComments] = useState<Comment[]>([])
@@ -93,6 +96,11 @@ export function CardModal({
         if (cardId === card.id) {
           setComments((prev) => prev.filter((c) => c.id !== commentId))
         }
+      } else if (event.type === 'CARD_DELETED') {
+        const { id } = event.payload as { id: string }
+        if (id === card.id) {
+          onClose()
+        }
       }
     })
 
@@ -100,7 +108,7 @@ export function CardModal({
       active = false
       unsub()
     }
-  }, [card])
+  }, [card, onClose])
 
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
@@ -133,8 +141,8 @@ export function CardModal({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (readOnly) {
-      onClose()
+    if (readOnly || isSubmitting || isDeleting) {
+      if (readOnly) onClose()
       return
     }
     const trimmedTitle = title.trim()
@@ -153,6 +161,8 @@ export function CardModal({
       assignee,
     }
 
+    setIsSubmitting(true)
+    setSubmitError('')
     try {
       if (card) {
         await updateCard(card.id, payload)
@@ -163,6 +173,35 @@ export function CardModal({
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save changes.'
       setSubmitError(msg)
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!card || isDeleting || isSubmitting) return
+    setIsDeleting(true)
+    setSubmitError('')
+    try {
+      await deleteCard(card.id)
+      onClose()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete card.'
+      setSubmitError(msg)
+      setIsDeleting(false)
+    }
+  }
+
+  async function handleDuplicate() {
+    if (!card || isSubmitting || isDeleting) return
+    setIsSubmitting(true)
+    setSubmitError('')
+    try {
+      await duplicateCard(card.id)
+      onClose()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to duplicate card.'
+      setSubmitError(msg)
+      setIsSubmitting(false)
     }
   }
 
@@ -181,18 +220,16 @@ export function CardModal({
         Delete “{card?.title}” for good?
       </p>
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => setConfirmingDelete(false)}>
+        <Button size="sm" disabled={isDeleting} onClick={() => setConfirmingDelete(false)}>
           Keep card
         </Button>
         <Button
           size="sm"
           variant="danger"
-          onClick={() => {
-            if (card) deleteCard(card.id)
-            onClose()
-          }}
+          disabled={isDeleting}
+          onClick={handleDelete}
         >
-          Delete card
+          {isDeleting ? 'Deleting…' : 'Delete card'}
         </Button>
       </div>
     </div>
@@ -200,22 +237,37 @@ export function CardModal({
     <div className="flex items-center justify-between gap-2">
       <div>
         {card && (
-          <Button
-            variant="dangerGhost"
-            size="sm"
-            onClick={() => setConfirmingDelete(true)}
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-            Delete
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="dangerGhost"
+              size="sm"
+              disabled={isSubmitting || isDeleting}
+              onClick={() => setConfirmingDelete(true)}
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={isSubmitting || isDeleting}
+              onClick={handleDuplicate}
+              title="Duplicate this task"
+            >
+              <CopyIcon className="h-3.5 w-3.5" />
+              Duplicate
+            </Button>
+          </div>
         )}
       </div>
       <div className="flex gap-2">
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="secondary" disabled={isSubmitting || isDeleting} onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" form={formId} variant="primary">
-          {card ? 'Save changes' : 'Add card'}
+        <Button type="submit" form={formId} variant="primary" disabled={isSubmitting || isDeleting}>
+          {isSubmitting
+            ? (card ? 'Saving…' : 'Adding…')
+            : (card ? 'Save changes' : 'Add card')}
         </Button>
       </div>
     </div>

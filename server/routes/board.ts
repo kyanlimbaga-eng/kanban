@@ -185,15 +185,12 @@ boardRouter.post('/cards', requireAdmin, (req: Request, res: Response): void => 
   const cleanLabels = Array.isArray(labels) ? labels.filter((l) => typeof l === 'string') : []
   const cleanAssignee = typeof assignee === 'string' ? assignee.trim() : ''
 
-  // Position at end of column
-  const maxPosRow = db.prepare('SELECT MAX(position) as maxPos FROM cards WHERE column_id = ?').get(columnId) as { maxPos: number | null }
-  const position = (maxPosRow.maxPos !== null && maxPosRow.maxPos !== undefined) ? maxPosRow.maxPos + 1 : 0
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
 
   db.prepare(`
     INSERT INTO cards (id, column_id, title, description, priority, due_date, labels, assignee, position, version, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(position) + 1 FROM cards WHERE column_id = ?), 0), 1, ?, ?, ?)
   `).run(
     id,
     columnId,
@@ -203,7 +200,7 @@ boardRouter.post('/cards', requireAdmin, (req: Request, res: Response): void => 
     cleanDueDate,
     JSON.stringify(cleanLabels),
     cleanAssignee,
-    position,
+    columnId,
     req.user!.username,
     now,
     now,
@@ -339,6 +336,8 @@ boardRouter.delete('/cards/:id', requireAdmin, (req: Request, res: Response): vo
     return
   }
 
+  // Delete dependent comments explicitly to ensure clean cascade across configurations
+  db.prepare('DELETE FROM comments WHERE card_id = ?').run(id)
   db.prepare('DELETE FROM cards WHERE id = ?').run(id)
 
   // Normalize remaining cards in column

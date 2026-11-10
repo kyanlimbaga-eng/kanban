@@ -3,7 +3,6 @@ import { api } from '../services/api'
 import { socket } from '../services/socket'
 import type { Board, Card, CardInput, CardUpdate, Column } from '../types'
 import { arrayMove, sortByPosition } from '../utils/array'
-import { createId } from '../utils/id'
 import { normalizeLabels } from '../utils/labels'
 
 interface BoardState extends Board {
@@ -15,6 +14,7 @@ interface BoardState extends Board {
   deleteColumn: (id: string) => Promise<void>
   reorderColumn: (activeId: string, overId: string) => Promise<void>
   addCard: (input: CardInput) => Promise<string>
+  duplicateCard: (id: string) => Promise<string>
   updateCard: (id: string, update: CardUpdate) => Promise<Card | null>
   deleteCard: (id: string) => Promise<void>
   moveCard: (cardId: string, toColumnId: string, toIndex: number) => Promise<void>
@@ -25,6 +25,51 @@ interface BoardState extends Board {
 }
 
 let socketSubscribed = false
+
+/** Inserts a card or updates it in-place if already present, preventing duplicate tasks. */
+function upsertCard(cards: Card[], card: Card): Card[] {
+  const index = cards.findIndex((c) => c.id === card.id)
+  if (index >= 0) {
+    const next = [...cards]
+    next[index] = card
+    return sortByPosition(next)
+  }
+  return sortByPosition([...cards, card])
+}
+
+/** Reliably moves a card and normalizes sequential positions across source and destination columns. */
+function applyCardMove(cards: Card[], cardId: string, toColumnId: string, toIndex: number): Card[] {
+  const card = cards.find((c) => c.id === cardId)
+  if (!card) return cards
+
+  const fromColumnId = card.columnId
+  const remainingCards = cards.filter((c) => c.id !== cardId)
+
+  const targetCards = sortByPosition(
+    remainingCards.filter((c) => c.columnId === toColumnId),
+  )
+  const insertIndex = Math.min(Math.max(toIndex, 0), targetCards.length)
+  const movedCard: Card = { ...card, columnId: toColumnId }
+
+  const nextTargetCards = [
+    ...targetCards.slice(0, insertIndex),
+    movedCard,
+    ...targetCards.slice(insertIndex),
+  ].map((c, idx) => ({ ...c, position: idx }))
+
+  const otherColumnCards = remainingCards.filter(
+    (c) => c.columnId !== toColumnId && c.columnId !== fromColumnId,
+  )
+
+  let nextSourceCards: Card[] = []
+  if (fromColumnId !== toColumnId) {
+    nextSourceCards = sortByPosition(
+      remainingCards.filter((c) => c.columnId === fromColumnId),
+    ).map((c, idx) => ({ ...c, position: idx }))
+  }
+
+  return [...otherColumnCards, ...nextSourceCards, ...nextTargetCards]
+}
 
 export const useBoardStore = create<BoardState>((set, get) => {
   function setupSocketListeners() {
@@ -82,57 +127,29 @@ export const useBoardStore = create<BoardState>((set, get) => {
         }
         case 'CARD_CREATED': {
           const card = payload as Card
-          set((state) => {
-            if (state.cards.some((c) => c.id === card.id)) return state
-            return { cards: sortByPosition([...state.cards, card]) }
-          })
+          set((state) => ({
+            cards: upsertCard(state.cards, card),
+            labels: normalizeLabels([...state.labels, ...(card.labels || [])]),
+          }))
           break
         }
         case 'CARD_UPDATED': {
           const updated = payload as Card
           set((state) => ({
-            cards: state.cards.map((c) => (c.id === updated.id ? updated : c)),
+            cards: upsertCard(state.cards, updated),
+            labels: normalizeLabels([...state.labels, ...(updated.labels || [])]),
           }))
           break
         }
         case 'CARD_MOVED': {
-          const { cardId, fromColumnId, toColumnId, toIndex } = payload as {
+          const { cardId, toColumnId, toIndex } = payload as {
             cardId: string
-            fromColumnId: string
             toColumnId: string
             toIndex: number
           }
-          set((state) => {
-            const card = state.cards.find((c) => c.id === cardId)
-            if (!card) return state
-
-            const targetCards = sortByPosition(
-              state.cards.filter((c) => c.columnId === toColumnId && c.id !== cardId),
-            )
-            const insertIndex = Math.min(Math.max(toIndex, 0), targetCards.length)
-            const movedCard = { ...card, columnId: toColumnId }
-
-            const nextTargetCards = [
-              ...targetCards.slice(0, insertIndex),
-              movedCard,
-              ...targetCards.slice(insertIndex),
-            ].map((c, idx) => ({ ...c, position: idx }))
-
-            const otherCards = state.cards.filter(
-              (c) => c.columnId !== toColumnId && c.columnId !== fromColumnId && c.id !== cardId,
-            )
-
-            let nextSourceCards: Card[] = []
-            if (fromColumnId !== toColumnId) {
-              nextSourceCards = sortByPosition(
-                state.cards.filter((c) => c.columnId === fromColumnId && c.id !== cardId),
-              ).map((c, idx) => ({ ...c, position: idx }))
-            }
-
-            return {
-              cards: [...otherCards, ...nextSourceCards, ...nextTargetCards],
-            }
-          })
+          set((state) => ({
+            cards: applyCardMove(state.cards, cardId, toColumnId, toIndex),
+          }))
           break
         }
         case 'CARD_DELETED': {
@@ -273,18 +290,33 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     addCard: async (input: CardInput) => {
-      const tempId = createId()
       try {
         const created = await api.createCard(input)
         set((state) => ({
-          cards: sortByPosition([...state.cards, created]),
+          cards: upsertCard(state.cards, created),
           labels: normalizeLabels([...state.labels, ...(created.labels || [])]),
         }))
         return created.id
       } catch (err) {
         console.error('Failed to add card:', err)
-        return tempId
+        throw err
       }
+    },
+
+    duplicateCard: async (id: string) => {
+      const card = get().cards.find((c) => c.id === id)
+      if (!card) throw new Error('Card not found.')
+
+      const input: CardInput = {
+        columnId: card.columnId,
+        title: `${card.title} (Copy)`,
+        description: card.description,
+        priority: card.priority,
+        dueDate: card.dueDate,
+        labels: [...card.labels],
+        assignee: card.assignee,
+      }
+      return get().addCard(input)
     },
 
     updateCard: async (id: string, update: CardUpdate) => {
@@ -296,7 +328,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         }
         const updated = await api.updateCard(id, payload)
         set((state) => ({
-          cards: state.cards.map((c) => (c.id === id ? updated : c)),
+          cards: upsertCard(state.cards, updated),
           labels: normalizeLabels([...state.labels, ...(updated.labels || [])]),
         }))
         return updated
@@ -308,6 +340,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
     },
 
     deleteCard: async (id: string) => {
+      const previousCards = get().cards
       set((state) => ({
         cards: state.cards.filter((c) => c.id !== id),
       }))
@@ -315,7 +348,8 @@ export const useBoardStore = create<BoardState>((set, get) => {
         await api.deleteCard(id)
       } catch (err) {
         console.error('Failed to delete card:', err)
-        get().fetchBoard()
+        set({ cards: previousCards })
+        throw err
       }
     },
 
@@ -324,34 +358,11 @@ export const useBoardStore = create<BoardState>((set, get) => {
       const card = state.cards.find((c) => c.id === cardId)
       if (!card) return
 
-      const fromColumnId = card.columnId
-      const targetCards = sortByPosition(
-        state.cards.filter((c) => c.columnId === toColumnId && c.id !== cardId),
-      )
-      const insertIndex = Math.min(Math.max(toIndex, 0), targetCards.length)
-      const movedCard = { ...card, columnId: toColumnId }
-
-      const nextTargetCards = [
-        ...targetCards.slice(0, insertIndex),
-        movedCard,
-        ...targetCards.slice(insertIndex),
-      ].map((c, idx) => ({ ...c, position: idx }))
-
-      const otherCards = state.cards.filter(
-        (c) => c.columnId !== toColumnId && c.columnId !== fromColumnId && c.id !== cardId,
-      )
-
-      let nextSourceCards: Card[] = []
-      if (fromColumnId !== toColumnId) {
-        nextSourceCards = sortByPosition(
-          state.cards.filter((c) => c.columnId === fromColumnId && c.id !== cardId),
-        ).map((c, idx) => ({ ...c, position: idx }))
-      }
-
-      set({ cards: [...otherCards, ...nextSourceCards, ...nextTargetCards] })
+      const updatedCards = applyCardMove(state.cards, cardId, toColumnId, toIndex)
+      set({ cards: updatedCards })
 
       try {
-        await api.moveCard(cardId, toColumnId, insertIndex)
+        await api.moveCard(cardId, toColumnId, toIndex)
       } catch (err) {
         console.error('Failed to move card:', err)
         get().fetchBoard()

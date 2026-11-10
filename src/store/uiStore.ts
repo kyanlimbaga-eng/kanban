@@ -35,7 +35,7 @@ export const useUiStore = create<UiState>()(
     (set, get) => ({
       theme: getSystemTheme(),
       filters: emptyFilters,
-      adminPasscode: 'admin123',
+      adminPasscode: '4dmin@2026!',
       adminUnlocked: false,
 
       toggleTheme: () => {

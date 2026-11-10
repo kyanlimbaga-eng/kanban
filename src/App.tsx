@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Board } from './components/Board'
+import { PasscodeGate } from './components/PasscodeGate'
 import { useBoardStore } from './store/boardStore'
 import { useUiStore } from './store/uiStore'
 
@@ -16,11 +17,23 @@ function LoadingScreen() {
   )
 }
 
+function normalizePath(pathname: string) {
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return pathname.slice(0, -1)
+  }
+  return pathname
+}
+
 function App() {
   const [hydrated, setHydrated] = useState(
     () => useBoardStore.persist.hasHydrated() && useUiStore.persist.hasHydrated(),
   )
   const theme = useUiStore((state) => state.theme)
+  const adminUnlocked = useUiStore((state) => state.adminUnlocked)
+  const unlockAdmin = useUiStore((state) => state.unlockAdmin)
+  const pathname = normalizePath(window.location.pathname)
+  const isAdminRoute = pathname === '/admin'
+  const readOnly = !isAdminRoute || !adminUnlocked
 
   useEffect(() => {
     if (hydrated) return
@@ -53,7 +66,11 @@ function App() {
     return <LoadingScreen />
   }
 
-  return <Board />
+  if (isAdminRoute && !adminUnlocked) {
+    return <PasscodeGate onUnlock={unlockAdmin} />
+  }
+
+  return <Board readOnly={readOnly} />
 }
 
 export default App

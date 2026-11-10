@@ -6,6 +6,7 @@ import { Input, Select } from './ui/Input'
 import { PlusIcon, SearchIcon, XIcon } from './ui/icons'
 
 interface FilterBarProps {
+  readOnly: boolean
   filters: Filters
   labelOptions: string[]
   visibleCount: number
@@ -18,6 +19,7 @@ interface FilterBarProps {
 }
 
 export function FilterBar({
+  readOnly,
   filters,
   labelOptions,
   visibleCount,
@@ -112,15 +114,17 @@ export function FilterBar({
             : `${totalCount} ${totalCount === 1 ? 'card' : 'cards'}`}
         </span>
 
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={onAddColumn}
-          className="ml-auto h-9"
-        >
-          <PlusIcon className="h-4 w-4" />
-          Add column
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={onAddColumn}
+            className="ml-auto h-9"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add column
+          </Button>
+        )}
       </div>
     </div>
   )

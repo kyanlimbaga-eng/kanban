@@ -1,7 +1,12 @@
 import { Button } from './ui/Button'
 import { PlusIcon } from './ui/icons'
 
-export function BoardEmptyState({ onAddColumn }: { onAddColumn: () => void }) {
+interface BoardEmptyStateProps {
+  readOnly: boolean
+  onAddColumn: () => void
+}
+
+export function BoardEmptyState({ readOnly, onAddColumn }: BoardEmptyStateProps) {
   return (
     <div className="flex h-full items-center justify-center p-6">
       <div className="max-w-sm text-center">
@@ -45,13 +50,16 @@ export function BoardEmptyState({ onAddColumn }: { onAddColumn: () => void }) {
           Your board is wide open
         </h2>
         <p className="mt-1.5 text-sm leading-relaxed text-[color:rgb(31_41_51/0.68)] dark:text-slate-400">
-          Columns are the stages your work moves through. Add your first one and
-          start planning.
+          {readOnly
+            ? 'No columns yet. This board is view only.'
+            : 'Columns are the stages your work moves through. Add your first one and start planning.'}
         </p>
-        <Button variant="primary" onClick={onAddColumn} className="mt-5">
-          <PlusIcon className="h-4 w-4" />
-          Add your first column
-        </Button>
+        {!readOnly && (
+          <Button variant="primary" onClick={onAddColumn} className="mt-5">
+            <PlusIcon className="h-4 w-4" />
+            Add your first column
+          </Button>
+        )}
       </div>
     </div>
   )

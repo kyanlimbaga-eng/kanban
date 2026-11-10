@@ -23,6 +23,7 @@ import {
 import { IconButton } from './ui/IconButton'
 
 interface ColumnProps {
+  readOnly: boolean
   column: ColumnModel
   cards: CardModel[]
   totalCardCount: number
@@ -36,6 +37,7 @@ interface ColumnProps {
 }
 
 export function Column({
+  readOnly,
   column,
   cards,
   totalCardCount,
@@ -58,6 +60,7 @@ export function Column({
   } = useSortable({
     id: column.id,
     data: { type: 'column' },
+    disabled: readOnly,
   })
 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -107,31 +110,33 @@ export function Column({
         >
           {showingFiltered ? `${cards.length}/${totalCardCount}` : totalCardCount}
         </span>
-        <div className="-mr-1 flex items-center">
-          <button
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-label={`Reorder ${column.title} column`}
-            title="Drag to reorder column"
-            className="inline-flex h-7 w-7 cursor-grab touch-manipulation items-center justify-center rounded-md text-[color:rgb(31_41_51/0.45)] transition-colors select-none [-webkit-touch-callout:none] hover:bg-[var(--color-rail)]/70 hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none active:cursor-grabbing dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500/70"
-          >
-            <GripVerticalIcon className="h-4 w-4" />
-          </button>
-          <IconButton
-            label={`Rename ${column.title} column`}
-            onClick={() => onRenameColumn(column)}
-          >
-            <PencilIcon className="h-3.5 w-3.5" />
-          </IconButton>
-          <IconButton
-            label={`Delete ${column.title} column`}
-            tone="danger"
-            onClick={() => onDeleteColumn(column)}
-          >
-            <TrashIcon className="h-3.5 w-3.5" />
-          </IconButton>
-        </div>
+        {!readOnly && (
+          <div className="-mr-1 flex items-center">
+            <button
+              ref={setActivatorNodeRef}
+              {...attributes}
+              {...listeners}
+              aria-label={`Reorder ${column.title} column`}
+              title="Drag to reorder column"
+              className="inline-flex h-7 w-7 cursor-grab touch-manipulation items-center justify-center rounded-md text-[color:rgb(31_41_51/0.45)] transition-colors select-none [-webkit-touch-callout:none] hover:bg-[var(--color-rail)]/70 hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none active:cursor-grabbing dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500/70"
+            >
+              <GripVerticalIcon className="h-4 w-4" />
+            </button>
+            <IconButton
+              label={`Rename ${column.title} column`}
+              onClick={() => onRenameColumn(column)}
+            >
+              <PencilIcon className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+              label={`Delete ${column.title} column`}
+              tone="danger"
+              onClick={() => onDeleteColumn(column)}
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </IconButton>
+          </div>
+        )}
       </header>
 
       <div
@@ -173,23 +178,25 @@ export function Column({
           ) : (
             <div className="flex flex-col gap-2.5 p-0.5">
               {cards.map((card) => (
-                <Card key={card.id} card={card} onOpen={onOpenCard} />
+                <Card key={card.id} card={card} onOpen={onOpenCard} readOnly={readOnly} />
               ))}
             </div>
           )}
         </SortableContext>
       </div>
 
-      <div className="shrink-0 border-t border-[var(--color-rail)] p-2 pt-2 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={() => onAddCard(column.id)}
-          className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[color:rgb(31_41_51/0.2)] px-2 py-2 text-xs font-medium text-[color:rgb(31_41_51/0.7)] transition-colors hover:border-[var(--color-signal)]/40 hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-indigo-500/70"
-        >
-          <PlusIcon className="h-4 w-4" />
-          Add card
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="shrink-0 border-t border-[var(--color-rail)] p-2 pt-2 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => onAddCard(column.id)}
+            className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-[color:rgb(31_41_51/0.2)] px-2 py-2 text-xs font-medium text-[color:rgb(31_41_51/0.7)] transition-colors hover:border-[var(--color-signal)]/40 hover:bg-[var(--color-surface)] hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none dark:border-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:focus-visible:ring-indigo-500/70"
+          >
+            <PlusIcon className="h-4 w-4" />
+            Add card
+          </button>
+        </div>
+      )}
     </section>
   )
 }

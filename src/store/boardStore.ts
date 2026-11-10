@@ -6,6 +6,11 @@ import { dateFromToday } from '../utils/dates'
 import { createId } from '../utils/id'
 import { normalizeLabels } from '../utils/labels'
 import { sqliteStorage } from './sqliteStorage'
+import { useUiStore } from './uiStore'
+
+function canEditBoard() {
+  return useUiStore.getState().adminUnlocked
+}
 
 interface BoardState extends Board {
   addColumn: (title: string) => string
@@ -101,6 +106,7 @@ export const useBoardStore = create<BoardState>()(
       ...createSeedBoard(),
 
       addColumn: (title) => {
+        if (!canEditBoard()) return ''
         const id = createId()
         set((state) => ({
           columns: [
@@ -112,6 +118,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       renameColumn: (id, title) => {
+        if (!canEditBoard()) return
         const trimmed = title.trim()
         if (!trimmed) return
         set((state) => ({
@@ -122,6 +129,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       deleteColumn: (id) => {
+        if (!canEditBoard()) return
         set((state) => ({
           columns: [...state.columns]
             .filter((column) => column.id !== id)
@@ -132,6 +140,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       reorderColumn: (activeId, overId) => {
+        if (!canEditBoard()) return
         if (activeId === overId) return
         set((state) => {
           const ordered = [...state.columns].sort(
@@ -151,6 +160,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       addCard: (input) => {
+        if (!canEditBoard()) return ''
         const id = createId()
         set((state) => ({
           cards: [
@@ -173,6 +183,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       updateCard: (id, update) => {
+        if (!canEditBoard()) return
         set((state) => {
           const card = state.cards.find((item) => item.id === id)
           if (!card) return state
@@ -207,6 +218,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       deleteCard: (id) => {
+        if (!canEditBoard()) return
         set((state) => {
           const target = state.cards.find((card) => card.id === id)
           if (!target) return state
@@ -229,6 +241,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       moveCard: (cardId, toColumnId, toIndex) => {
+        if (!canEditBoard()) return
         set((state) => {
           const card = state.cards.find((item) => item.id === cardId)
           if (!card) return state
@@ -282,6 +295,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       renameLabel: (oldLabel, newLabel) => {
+        if (!canEditBoard()) return
         const previous = oldLabel.trim()
         const next = newLabel.trim()
         if (!previous || !next || previous.toLowerCase() === next.toLowerCase() && previous === next) {
@@ -319,6 +333,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       deleteLabel: (label) => {
+        if (!canEditBoard()) return
         const target = label.trim()
         if (!target) return
 
@@ -336,6 +351,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       addLabel: (label) => {
+        if (!canEditBoard()) return null
         const trimmed = label.trim()
         if (!trimmed) return null
 
@@ -352,6 +368,7 @@ export const useBoardStore = create<BoardState>()(
       },
 
       replaceBoard: (board) => {
+        if (!canEditBoard()) return
         set({
           columns: board.columns.map((column) => ({ ...column })),
           cards: board.cards.map((card) => ({

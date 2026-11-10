@@ -93,9 +93,10 @@ function CardContent({ card }: { card: CardModel }) {
 interface CardProps {
   card: CardModel
   onOpen: (id: string) => void
+  readOnly?: boolean
 }
 
-export function Card({ card, onOpen }: CardProps) {
+export function Card({ card, onOpen, readOnly = false }: CardProps) {
   const {
     attributes,
     listeners,
@@ -106,6 +107,7 @@ export function Card({ card, onOpen }: CardProps) {
   } = useSortable({
     id: card.id,
     data: { type: 'card', columnId: card.columnId },
+    disabled: readOnly,
   })
 
   const style: CSSProperties = {
@@ -114,8 +116,9 @@ export function Card({ card, onOpen }: CardProps) {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    listeners?.onKeyDown?.(event)
-    // Enter opens the editor; Space is reserved for picking the card up.
+    if (!readOnly) {
+      listeners?.onKeyDown?.(event)
+    }
     if (!event.defaultPrevented && event.key === 'Enter') {
       event.preventDefault()
       onOpen(card.id)
@@ -126,31 +129,38 @@ export function Card({ card, onOpen }: CardProps) {
     <article
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...(readOnly ? {} : attributes)}
+      {...(readOnly ? {} : listeners)}
       onKeyDown={handleKeyDown}
       onClick={() => onOpen(card.id)}
-      aria-label={`${card.title}. Press Enter to edit or Space to drag.`}
+      aria-label={
+        readOnly
+          ? `${card.title}. Press Enter to view details.`
+          : `${card.title}. Press Enter to edit or Space to drag.`
+      }
       className={cn(
-        'group relative cursor-grab touch-manipulation rounded-sm border border-[var(--color-rail)] bg-[var(--color-surface)] p-3 shadow-[0_1px_0_rgba(31,41,51,0.04)] ring-1 ring-transparent transition-[box-shadow,border-color,opacity,transform] select-none [-webkit-touch-callout:none]',
-        'hover:border-[#cfc9bc] hover:shadow-[0_6px_16px_rgba(31,41,51,0.08)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/50 focus-visible:outline-none active:cursor-grabbing',
+        'group relative rounded-sm border border-[var(--color-rail)] bg-[var(--color-surface)] p-3 shadow-[0_1px_0_rgba(31,41,51,0.04)] ring-1 ring-transparent transition-[box-shadow,border-color,opacity,transform] select-none [-webkit-touch-callout:none]',
+        'hover:border-[#cfc9bc] hover:shadow-[0_6px_16px_rgba(31,41,51,0.08)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/50 focus-visible:outline-none',
+        readOnly ? 'cursor-pointer' : 'cursor-grab touch-manipulation active:cursor-grabbing',
         'dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600 dark:focus-visible:ring-indigo-500/60',
         isDragging && 'opacity-40',
       )}
     >
-      <button
-        type="button"
-        aria-label={`Edit ${card.title}`}
-        onPointerDown={(event) => event.stopPropagation()}
-        onKeyDown={(event) => event.stopPropagation()}
-        onClick={(event) => {
-          event.stopPropagation()
-          onOpen(card.id)
-        }}
-        className="absolute top-2 right-2 rounded-md p-1 text-[color:rgb(31_41_51/0.45)] opacity-0 transition hover:bg-[var(--color-rail)]/60 hover:text-[var(--color-ink)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500"
-      >
-        <PencilIcon className="h-3.5 w-3.5" />
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          aria-label={`Edit ${card.title}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpen(card.id)
+          }}
+          className="absolute top-2 right-2 rounded-md p-1 text-[color:rgb(31_41_51/0.45)] opacity-0 transition hover:bg-[var(--color-rail)]/60 hover:text-[var(--color-ink)] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/60 focus-visible:outline-none group-hover:opacity-100 group-focus-within:opacity-100 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200 dark:focus-visible:ring-indigo-500"
+        >
+          <PencilIcon className="h-3.5 w-3.5" />
+        </button>
+      )}
       <CardContent card={card} />
     </article>
   )

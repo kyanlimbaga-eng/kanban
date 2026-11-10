@@ -11,6 +11,7 @@ import { Modal } from './ui/Modal'
 import { TrashIcon, XIcon } from './ui/icons'
 
 interface CardModalProps {
+  readOnly: boolean
   columnId: string
   columnTitle: string
   card?: CardModel
@@ -18,6 +19,7 @@ interface CardModalProps {
 }
 
 export function CardModal({
+  readOnly,
   columnId,
   columnTitle,
   card,
@@ -52,6 +54,10 @@ export function CardModal({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (readOnly) {
+      onClose()
+      return
+    }
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
       setTitleError('Give this card a title.')
@@ -76,7 +82,13 @@ export function CardModal({
     onClose()
   }
 
-  const footer = confirmingDelete ? (
+  const footer = readOnly ? (
+    <div className="flex items-center justify-end">
+      <Button variant="secondary" onClick={onClose}>
+        Close
+      </Button>
+    </div>
+  ) : confirmingDelete ? (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs font-medium text-rose-600 dark:text-rose-400">
         Delete “{card?.title}” for good?
@@ -126,7 +138,7 @@ export function CardModal({
     <Modal
       open
       onClose={onClose}
-      title={card ? 'Edit card' : 'New card'}
+      title={card ? (readOnly ? 'View card' : 'Edit card') : 'New card'}
       description={`in ${columnTitle}`}
       footer={footer}
     >
@@ -144,6 +156,7 @@ export function CardModal({
             placeholder="What needs doing?"
             maxLength={200}
             aria-invalid={Boolean(titleError)}
+            disabled={readOnly}
           />
         </Field>
 
@@ -154,6 +167,7 @@ export function CardModal({
             onChange={(event) => setDescription(event.target.value)}
             placeholder="Add a little context, links, or acceptance criteria…"
             rows={4}
+            disabled={readOnly}
           />
         </Field>
 
@@ -163,6 +177,7 @@ export function CardModal({
               id={priorityId}
               value={priority}
               onChange={(event) => setPriority(event.target.value as Priority)}
+              disabled={readOnly}
             >
               {PRIORITIES.map((option) => (
                 <option key={option} value={option}>
@@ -178,6 +193,7 @@ export function CardModal({
               type="date"
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
+              disabled={readOnly}
             />
           </Field>
         </div>
@@ -195,24 +211,26 @@ export function CardModal({
                     )}
                   >
                     <span className="truncate">{label}</span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setLabels((current) =>
-                          current.filter((item) => item.toLowerCase() !== label.toLowerCase()),
-                        )
-                      }
-                      aria-label={`Remove ${label} label`}
-                      className="rounded-full p-0.5 opacity-70 transition hover:bg-black/10 hover:opacity-100 focus-visible:outline-none dark:hover:bg-white/10"
-                    >
-                      <XIcon className="h-3 w-3" />
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLabels((current) =>
+                            current.filter((item) => item.toLowerCase() !== label.toLowerCase()),
+                          )
+                        }
+                        aria-label={`Remove ${label} label`}
+                        className="rounded-full p-0.5 opacity-70 transition hover:bg-black/10 hover:opacity-100 focus-visible:outline-none dark:hover:bg-white/10"
+                      >
+                        <XIcon className="h-3 w-3" />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
             )}
 
-            {availableLabels.length > 0 ? (
+            {!readOnly && availableLabels.length > 0 ? (
               <Select
                 id={labelsId}
                 value=""
@@ -230,11 +248,13 @@ export function CardModal({
                   </option>
                 ))}
               </Select>
-            ) : (
+            ) : !readOnly ? (
               <p className="text-xs text-slate-400 dark:text-slate-500">
                 No labels available. Create them in Settings.
               </p>
-            )}
+            ) : labels.length === 0 ? (
+              <p className="text-xs text-slate-400 dark:text-slate-500">No labels.</p>
+            ) : null}
           </div>
         </Field>
 
@@ -245,6 +265,7 @@ export function CardModal({
             onChange={(event) => setAssignee(event.target.value)}
             placeholder="e.g. Alex Morgan"
             maxLength={100}
+            disabled={readOnly}
           />
         </Field>
       </form>

@@ -10,6 +10,7 @@ import {
 } from './ui/icons'
 
 interface AppHeaderProps {
+  readOnly: boolean
   onExport: () => void
   onImportClick: () => void
   onSettingsClick: () => void
@@ -17,6 +18,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({
+  readOnly,
   onExport,
   onImportClick,
   onSettingsClick,
@@ -24,6 +26,9 @@ export function AppHeader({
 }: AppHeaderProps) {
   const theme = useUiStore((state) => state.theme)
   const toggleTheme = useUiStore((state) => state.toggleTheme)
+  const lockAdmin = useUiStore((state) => state.lockAdmin)
+  const isAdminRoute =
+    typeof window !== 'undefined' && window.location.pathname.replace(/\/$/, '') === '/admin'
 
   return (
     <header className="shrink-0 border-b border-[var(--color-rail)] bg-[var(--color-paper)]/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
@@ -50,28 +55,37 @@ export function AppHeader({
             <DownloadIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Export</span>
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onImportClick}
-            aria-label="Import board from JSON"
-            title="Import board from JSON"
-            className="h-8"
-          >
-            <UploadIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Import</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onSettingsClick}
-            disabled={settingsDisabled}
-            aria-label="Open settings"
-            title={settingsDisabled ? 'Close the card editor first' : 'Open settings'}
-            className="h-8 w-8"
-          >
-            <SettingsIcon className="h-4 w-4" />
-          </Button>
+          {!readOnly && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onImportClick}
+                aria-label="Import board from JSON"
+                title="Import board from JSON"
+                className="h-8"
+              >
+                <UploadIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Import</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onSettingsClick}
+                disabled={settingsDisabled}
+                aria-label="Open settings"
+                title={settingsDisabled ? 'Close the card editor first' : 'Open settings'}
+                className="h-8 w-8"
+              >
+                <SettingsIcon className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+          {isAdminRoute && !readOnly && (
+            <Button variant="ghost" size="sm" onClick={lockAdmin} className="h-8">
+              Lock
+            </Button>
+          )}
           <div className="mx-1 h-5 w-px bg-[var(--color-rail)] dark:bg-slate-800" />
           <Button
             variant="ghost"

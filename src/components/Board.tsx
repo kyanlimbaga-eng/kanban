@@ -80,7 +80,11 @@ const boardCollisionDetection: CollisionDetection = (args) => {
   return closestCorners(filteredArgs)
 }
 
-export function Board() {
+interface BoardProps {
+  readOnly: boolean
+}
+
+export function Board({ readOnly }: BoardProps) {
   const columns = useBoardStore((state) => state.columns)
   const cards = useBoardStore((state) => state.cards)
   const boardLabels = useBoardStore((state) => state.labels)
@@ -109,9 +113,13 @@ export function Board() {
   const boardRef = useRef<HTMLElement>(null)
 
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+      disabled: readOnly,
+    }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 250, tolerance: 8 },
+      disabled: readOnly,
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -120,6 +128,7 @@ export function Board() {
         cancel: [KeyboardCode.Esc],
         end: [KeyboardCode.Space, KeyboardCode.Tab],
       },
+      disabled: readOnly,
     }),
   )
 
@@ -235,6 +244,7 @@ export function Board() {
   }
 
   function handleDragStart(event: DragStartEvent) {
+    if (readOnly) return
     const type = event.active.data.current?.type as DragType
     suppressClickRef.current = true
     if (type === 'card' || type === 'column') {
@@ -256,7 +266,7 @@ export function Board() {
     const { active, over } = event
     setActiveDrag(null)
     scheduleClickSuppressionReset()
-    if (!over) return
+    if (readOnly || !over) return
 
     const activeType = active.data.current?.type as DragType
     if (activeType === 'column') {
@@ -336,7 +346,7 @@ export function Board() {
   async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file) return
+    if (readOnly || !file) return
 
     if (file.size > 2 * 1024 * 1024) {
       showToast(
@@ -369,6 +379,7 @@ export function Board() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-paper)] text-[var(--color-ink)] dark:bg-slate-950 dark:text-slate-100">
       <AppHeader
+        readOnly={readOnly}
         onExport={handleExport}
         onImportClick={() => fileInputRef.current?.click()}
         onSettingsClick={() => setSettingsOpen(true)}
@@ -376,6 +387,7 @@ export function Board() {
       />
 
       <FilterBar
+        readOnly={readOnly}
         filters={filters}
         labelOptions={labelOptions}
         visibleCount={visibleCount}
@@ -400,6 +412,7 @@ export function Board() {
         >
           {orderedColumns.length === 0 ? (
             <BoardEmptyState
+              readOnly={readOnly}
               onAddColumn={() => setColumnDialog({ mode: 'add' })}
             />
           ) : (
@@ -407,6 +420,7 @@ export function Board() {
               {orderedColumns.map((column, index) => (
                 <Column
                   key={column.id}
+                  readOnly={readOnly}
                   column={column}
                   cards={cardsByColumn.get(column.id) ?? []}
                   totalCardCount={totalCardsByColumn.get(column.id) ?? 0}
@@ -443,9 +457,10 @@ export function Board() {
         onChange={handleImportFile}
       />
 
-      {cardModal?.mode === 'create' && (
+      {cardModal?.mode === 'create' && !readOnly && (
         <CardModal
           key={`new-${cardModal.columnId}`}
+          readOnly={readOnly}
           columnId={cardModal.columnId}
           columnTitle={
             orderedColumns.find((column) => column.id === cardModal.columnId)
@@ -458,6 +473,7 @@ export function Board() {
       {cardModal?.mode === 'edit' && editingCard && (
         <CardModal
           key={editingCard.id}
+          readOnly={readOnly}
           card={editingCard}
           columnId={editingCard.columnId}
           columnTitle={modalColumnTitle}
@@ -465,7 +481,7 @@ export function Board() {
         />
       )}
 
-      {columnDialog && (
+      {columnDialog && !readOnly && (
         <ColumnModal
           key={
             columnDialog.mode === 'rename'
@@ -487,7 +503,7 @@ export function Board() {
       )}
 
       <ConfirmDialog
-        open={columnToDelete !== null}
+        open={columnToDelete !== null && !readOnly}
         title={`Delete ${columnToDelete?.title ?? 'column'}?`}
         description={
           <div className="space-y-2">
@@ -509,7 +525,7 @@ export function Board() {
       />
 
       <ConfirmDialog
-        open={pendingImport !== null}
+        open={pendingImport !== null && !readOnly}
         title="Replace this board?"
         tone="primary"
         description={
@@ -553,7 +569,7 @@ export function Board() {
       />
 
       <SettingsModal
-        open={settingsOpen}
+        open={settingsOpen && !readOnly}
         onClose={() => setSettingsOpen(false)}
         onNotify={showToast}
       />

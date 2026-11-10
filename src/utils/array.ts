@@ -8,3 +8,8 @@ export function arrayMove<T>(items: T[], from: number, to: number): T[] {
   next.splice(to, 0, item)
   return next
 }
+
+/** Returns a copy sorted by numeric `position`. */
+export function sortByPosition<T extends { position: number }>(items: T[]): T[] {
+  return [...items].sort((first, second) => first.position - second.position)
+}

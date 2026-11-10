@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react'
 import { useBoardStore } from '../store/boardStore'
 import { useUiStore } from '../store/uiStore'
 import { cn } from '../utils/cn'
-import { getLabelClasses } from '../utils/labels'
+import { getLabelDotClass } from '../utils/labels'
 import { Button } from './ui/Button'
 import { Field, Input } from './ui/Input'
 import { Modal } from './ui/Modal'
@@ -58,7 +58,6 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
   }, [labels, search])
 
   function startRename(label: string) {
-    console.log('startRename', label)
     setEditing(label)
     setDraft(label)
     setError('')
@@ -260,7 +259,7 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                         <span
                           className={cn(
                             'h-2.5 w-2.5 shrink-0 rounded-full',
-                            getLabelClasses(label.name).split(' ')[0],
+                            getLabelDotClass(label.name),
                           )}
                         />
                         <Input
@@ -291,7 +290,7 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                       <span
                         className={cn(
                           'h-2.5 w-2.5 shrink-0 rounded-full',
-                          getLabelClasses(label.name).split(' ')[0],
+                          getLabelDotClass(label.name),
                         )}
                       />
                       <div className="min-w-0 flex-1">

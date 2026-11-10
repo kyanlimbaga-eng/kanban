@@ -7,13 +7,31 @@ const LABEL_STYLES = [
   'bg-cyan-50 text-cyan-700 ring-cyan-600/15 dark:bg-cyan-400/10 dark:text-cyan-300 dark:ring-cyan-400/20',
 ] as const
 
-/** Assigns a stable color to a label by hashing its name. */
-export function getLabelClasses(label: string): string {
+const LABEL_DOT_STYLES = [
+  'bg-sky-500',
+  'bg-violet-500',
+  'bg-amber-500',
+  'bg-emerald-500',
+  'bg-rose-500',
+  'bg-cyan-500',
+] as const
+
+function getLabelStyleIndex(label: string): number {
   let hash = 0
   for (let index = 0; index < label.length; index += 1) {
     hash = (hash * 31 + label.charCodeAt(index)) | 0
   }
-  return LABEL_STYLES[Math.abs(hash) % LABEL_STYLES.length]
+  return Math.abs(hash) % LABEL_STYLES.length
+}
+
+/** Assigns a stable color to a label by hashing its name. */
+export function getLabelClasses(label: string): string {
+  return LABEL_STYLES[getLabelStyleIndex(label)]
+}
+
+/** Returns a stable dot/background class for a label. */
+export function getLabelDotClass(label: string): string {
+  return LABEL_DOT_STYLES[getLabelStyleIndex(label)]
 }
 
 /** Trims, removes empties, and de-duplicates labels case-insensitively. */

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import type { Board, Card, CardInput, CardUpdate, Column } from '../types'
-import { arrayMove } from '../utils/array'
+import { arrayMove, sortByPosition } from '../utils/array'
 import { dateFromToday } from '../utils/dates'
 import { createId } from '../utils/id'
 import { normalizeLabels } from '../utils/labels'
@@ -93,9 +93,7 @@ function createSeedBoard(): Board {
   }
 }
 
-function sortByPosition(cards: Card[]): Card[] {
-  return [...cards].sort((first, second) => first.position - second.position)
-}
+
 
 export const useBoardStore = create<BoardState>()(
   persist(

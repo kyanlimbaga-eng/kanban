@@ -25,6 +25,7 @@ import type {
   Column as ColumnModel,
   DragType,
 } from '../types'
+import { sortByPosition } from '../utils/array'
 import { cardMatchesFilters, hasActiveFilters } from '../utils/filters'
 import { normalizeLabels } from '../utils/labels'
 import { exportBoardToFile, parseBoardJson } from '../utils/importExport'
@@ -77,10 +78,6 @@ const boardCollisionDetection: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(filteredArgs)
   if (pointerCollisions.length > 0) return pointerCollisions
   return closestCorners(filteredArgs)
-}
-
-function sortByPosition(cards: CardModel[]): CardModel[] {
-  return [...cards].sort((first, second) => first.position - second.position)
 }
 
 export function Board() {

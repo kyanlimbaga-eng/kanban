@@ -63,15 +63,9 @@ function readLabels(value: unknown): string[] {
     if (typeof label !== 'string') {
       throw new Error('Import failed: every label must be a string.')
     }
-    const trimmed = label.trim()
-    if (
-      trimmed &&
-      !labels.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())
-    ) {
-      labels.push(trimmed)
-    }
+    labels.push(label)
   }
-  return labels
+  return normalizeLabels(labels)
 }
 
 /**

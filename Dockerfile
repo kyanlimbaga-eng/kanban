@@ -20,6 +20,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install -g tsx
 
 COPY server ./server
+# Shared constants (e.g. the Plan label set) imported by the server modules
+COPY shared ./shared
 COPY --from=build /app/dist ./dist
 RUN mkdir -p /app/data
 

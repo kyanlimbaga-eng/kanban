@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { PLAN_LABELS } from '../shared/planLabels'
 
 export interface UserRow {
   id: string
@@ -10,6 +11,8 @@ export interface UserRow {
   salt: string
   role: 'admin' | 'viewer'
   display_name: string
+  /** 1 when the account still has to replace the temporary password. */
+  must_change_password: number
   created_at: string
 }
 
@@ -61,6 +64,12 @@ export interface LabelRow {
   created_at: string
 }
 
+export interface UserLabelRow {
+  user_id: string
+  label_name: string
+  created_at: string
+}
+
 export interface AuditLogRow {
   id: string
   user_id: string | null
@@ -109,6 +118,7 @@ db.exec(`
     salt TEXT NOT NULL,
     role TEXT NOT NULL CHECK(role IN ('admin', 'viewer')),
     display_name TEXT NOT NULL,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   );
 
@@ -160,6 +170,18 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS user_labels (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label_name TEXT NOT NULL COLLATE NOCASE,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, label_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    id TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     user_id TEXT,
@@ -176,6 +198,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cards_column ON cards(column_id, position);
   CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_user_labels_label ON user_labels(label_name);
 `)
 
 // Seed initial users and board if empty
@@ -296,6 +319,98 @@ function seedDatabase() {
 }
 
 seedDatabase()
+
+/**
+ * Ensures the fixed Plan label set exists on every startup.
+ * Deterministic ids make this idempotent: if an admin renamed a Plan label,
+ * the INSERT OR IGNORE hits the primary key and does not resurrect the old
+ * name; if the label never existed, it is created.
+ */
+function seedPlanLabels() {
+  const now = new Date().toISOString()
+  const insertLabel = db.prepare('INSERT OR IGNORE INTO labels (id, name, created_at) VALUES (?, ?, ?)')
+  PLAN_LABELS.forEach((label, index) => {
+    insertLabel.run(`lbl-plan-${index + 1}`, label, now)
+  })
+}
+
+/**
+ * Adds a column to an existing table when it is missing. SQLite has no
+ * "ADD COLUMN IF NOT EXISTS", so the current columns are inspected first.
+ */
+function ensureColumn(table: string, column: string, definition: string): void {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+  if (columns.some((existing) => existing.name === column)) return
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+}
+
+/**
+ * One-time data migrations, tracked in the schema_migrations table.
+ *
+ * `backfill_user_labels`: accounts created before label-based access control
+ * existed have no label assignments. Assign every label that exists at the
+ * moment of the migration to every non-admin account so their visibility does
+ * not change on upgrade. Labels created afterwards are never auto-assigned.
+ */
+function runMigrations() {
+  db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL);')
+
+  // Accounts created before this feature simply keep their current password.
+  ensureColumn('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0')
+
+  const alreadyApplied = db.prepare('SELECT id FROM schema_migrations WHERE id = ?').get('backfill_user_labels')
+  if (alreadyApplied) return
+
+  const now = new Date().toISOString()
+  const labels = db.prepare('SELECT name FROM labels').all() as Array<{ name: string }>
+  const users = db.prepare(`SELECT id FROM users WHERE role != 'admin'`).all() as Array<{ id: string }>
+  const insertAssignment = db.prepare('INSERT OR IGNORE INTO user_labels (user_id, label_name, created_at) VALUES (?, ?, ?)')
+
+  db.exec('BEGIN TRANSACTION;')
+  try {
+    for (const user of users) {
+      for (const label of labels) {
+        insertAssignment.run(user.id, label.name, now)
+      }
+    }
+    db.prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, ?)').run('backfill_user_labels', now)
+    db.exec('COMMIT;')
+  } catch (err) {
+    db.exec('ROLLBACK;')
+    throw err
+  }
+}
+
+seedPlanLabels()
+runMigrations()
+
+/** Returns the label names assigned to an account (case as stored). */
+export function getUserLabels(userId: string): string[] {
+  const rows = db.prepare(
+    'SELECT label_name FROM user_labels WHERE user_id = ? ORDER BY label_name COLLATE NOCASE ASC',
+  ).all(userId) as UserLabelRow[]
+  return rows.map((row) => row.label_name)
+}
+
+/** Trims, drops empties, and de-duplicates label names case-insensitively. */
+export function normalizeLabelNames(labels: unknown): string[] {
+  if (!Array.isArray(labels)) return []
+  const result: string[] = []
+  for (const item of labels) {
+    if (typeof item !== 'string') continue
+    const trimmed = item.trim()
+    if (!trimmed) continue
+    if (!result.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())) {
+      result.push(trimmed)
+    }
+  }
+  return result
+}
+
+/** Whether a label with the given name exists in the catalog (case-insensitive). */
+export function labelExists(name: string): boolean {
+  return Boolean(db.prepare('SELECT name FROM labels WHERE name = ? COLLATE NOCASE').get(name))
+}
 
 export function recordAuditLog(
   userId: string | null,

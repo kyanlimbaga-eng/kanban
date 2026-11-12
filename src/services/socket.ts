@@ -1,4 +1,4 @@
-import type { ConnectionStatus, User } from '../types'
+import type { ConnectionStatus, PresenceUser } from '../types'
 
 export type SocketEventHandler = (event: { type: string; payload: unknown; senderId?: string }) => void
 
@@ -6,9 +6,9 @@ class SocketService {
   private ws: WebSocket | null = null
   private status: ConnectionStatus = 'disconnected'
   private statusListeners = new Set<(status: ConnectionStatus) => void>()
-  private presenceListeners = new Set<(users: User[], count: number) => void>()
+  private presenceListeners = new Set<(users: PresenceUser[], count: number) => void>()
   private eventListeners = new Set<SocketEventHandler>()
-  private onlineUsers: User[] = []
+  private onlineUsers: PresenceUser[] = []
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
   private backoffMs = 1000
   private shouldConnect = false
@@ -39,7 +39,7 @@ class SocketService {
         try {
           const data = JSON.parse(event.data)
           if (data.type === 'PRESENCE_UPDATE') {
-            this.onlineUsers = data.payload.users || []
+            this.onlineUsers = (data.payload.users || []) as PresenceUser[]
             this.presenceListeners.forEach((fn) => fn(this.onlineUsers, data.payload.count || this.onlineUsers.length))
           } else {
             this.eventListeners.forEach((fn) => fn(data))
@@ -94,7 +94,7 @@ class SocketService {
     return () => this.statusListeners.delete(listener)
   }
 
-  public onPresenceChange(listener: (users: User[], count: number) => void): () => void {
+  public onPresenceChange(listener: (users: PresenceUser[], count: number) => void): () => void {
     this.presenceListeners.add(listener)
     listener(this.onlineUsers, this.onlineUsers.length)
     return () => this.presenceListeners.delete(listener)
@@ -109,7 +109,7 @@ class SocketService {
     return this.status
   }
 
-  public getOnlineUsers(): User[] {
+  public getOnlineUsers(): PresenceUser[] {
     return this.onlineUsers
   }
 

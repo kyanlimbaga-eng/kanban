@@ -4,13 +4,14 @@ import { useAuthStore } from '../store/authStore'
 import { useBoardStore } from '../store/boardStore'
 import { useUiStore } from '../store/uiStore'
 import type { AuditLog, User, UserRole } from '../types'
+import { isProtectedLabel } from '../../shared/planLabels'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/dates'
-import { getLabelDotClass } from '../utils/labels'
+import { getLabelClasses, getLabelDotClass } from '../utils/labels'
 import { Button } from './ui/Button'
 import { Field, Input, Select } from './ui/Input'
 import { Modal } from './ui/Modal'
-import { TrashIcon } from './ui/icons'
+import { LockIcon, TrashIcon } from './ui/icons'
 
 interface SettingsModalProps {
   open: boolean
@@ -21,6 +22,13 @@ interface SettingsModalProps {
 interface LabelRow {
   name: string
   count: number
+}
+
+/** Adds or removes a label from a selection list (case-insensitive). */
+function toggleLabel(list: string[], label: string): string[] {
+  const exists = list.some((item) => item.toLowerCase() === label.toLowerCase())
+  if (exists) return list.filter((item) => item.toLowerCase() !== label.toLowerCase())
+  return [...list, label]
 }
 
 export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
@@ -51,10 +59,15 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
   const [newPassword, setNewPassword] = useState('')
   const [newDisplayName, setNewDisplayName] = useState('')
   const [newRole, setNewRole] = useState<UserRole>('viewer')
+  const [newLabels, setNewLabels] = useState<string[]>([])
+  const [newMustChangePassword, setNewMustChangePassword] = useState(true)
   const [userError, setUserError] = useState('')
   const [userSuccess, setUserSuccess] = useState('')
   const [resettingUser, setResettingUser] = useState<User | null>(null)
   const [resetNewPass, setResetNewPass] = useState('')
+  const [editingLabelsUser, setEditingLabelsUser] = useState<User | null>(null)
+  const [draftLabels, setDraftLabels] = useState<string[]>([])
+  const [labelsEditError, setLabelsEditError] = useState('')
 
   // Audit state
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
@@ -219,16 +232,48 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
     }
 
     try {
-      const created = await api.createUser(newUsername.trim(), newPassword, newDisplayName.trim(), newRole)
+      const created = await api.createUser(
+        newUsername.trim(),
+        newPassword,
+        newDisplayName.trim(),
+        newRole,
+        newLabels,
+        newMustChangePassword,
+      )
       setUsers((prev) => [...prev, created])
-      setUserSuccess(`Created account for ${created.username} (${created.role}).`)
+      setUserSuccess(
+        created.labels.length > 0
+          ? `Created account for ${created.username} (${created.role}) with labels: ${created.labels.join(', ')}.`
+          : `Created account for ${created.username} (${created.role}). No labels assigned — it will see no cards.`,
+      )
       setNewUsername('')
       setNewPassword('')
       setNewDisplayName('')
       setNewRole('viewer')
+      setNewLabels([])
+      setNewMustChangePassword(true)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create user.'
       setUserError(msg)
+    }
+  }
+
+  async function handleSaveUserLabels() {
+    if (!editingLabelsUser) return
+    setLabelsEditError('')
+    try {
+      const updated = await api.updateUserLabels(editingLabelsUser.id, draftLabels)
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? { ...u, labels: updated.labels } : u)))
+      onNotify?.(
+        updated.labels.length > 0
+          ? `Updated labels for ${editingLabelsUser.username}: ${updated.labels.join(', ')}.`
+          : `Removed all labels from ${editingLabelsUser.username} — it will see no cards.`,
+      )
+      setEditingLabelsUser(null)
+      setDraftLabels([])
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update labels.'
+      setLabelsEditError(msg)
     }
   }
 
@@ -268,6 +313,10 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
     setUserError('')
     setUserSuccess('')
     setResettingUser(null)
+    setNewLabels([])
+    setEditingLabelsUser(null)
+    setDraftLabels([])
+    setLabelsEditError('')
     onClose()
   }
 
@@ -384,6 +433,7 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                 {filteredLabels.map((label) => {
                   const isEditing = editing === label.name
                   const isDeleting = deleting === label.name
+                  const isProtected = isProtectedLabel(label.name)
 
                   return (
                     <li
@@ -450,8 +500,17 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                             )}
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                              {label.name}
+                            <p className="flex items-center gap-1.5 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                              <span className="truncate">{label.name}</span>
+                              {isProtected && (
+                                <span
+                                  className="inline-flex shrink-0 items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.2 text-[9px] font-semibold tracking-wider text-indigo-600 uppercase dark:bg-indigo-950/50 dark:text-indigo-300"
+                                  title="Fixed Plan label — it scopes account access and cannot be deleted"
+                                >
+                                  <LockIcon className="h-2.5 w-2.5" />
+                                  Plan
+                                </span>
+                              )}
                             </p>
                             <p className="text-xs text-slate-400 dark:text-slate-500">
                               {label.count} {label.count === 1 ? 'card' : 'cards'}
@@ -465,20 +524,22 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                             >
                               Rename
                             </Button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditing(null)
-                                setDraft('')
-                                setError('')
-                                setDeleting(label.name)
-                              }}
-                              aria-label={`Delete ${label.name} label`}
-                              title={`Delete ${label.name}`}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
+                            {!isProtected && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditing(null)
+                                  setDraft('')
+                                  setError('')
+                                  setDeleting(label.name)
+                                }}
+                                aria-label={`Delete ${label.name} label`}
+                                title={`Delete ${label.name}`}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:outline-none dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -548,6 +609,65 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                   </Select>
                 </Field>
               </div>
+
+              <div className="mt-3">
+                <Field
+                  label="Assigned labels"
+                  htmlFor="new-user-labels"
+                  hint="Optional — an account only sees cards carrying these labels"
+                >
+                  <div id="new-user-labels" className="flex flex-wrap gap-1.5">
+                    {boardLabels.length === 0 ? (
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        No labels available yet.
+                      </p>
+                    ) : (
+                      boardLabels.map((label) => {
+                        const active = newLabels.some(
+                          (item) => item.toLowerCase() === label.toLowerCase(),
+                        )
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            onClick={() => setNewLabels((current) => toggleLabel(current, label))}
+                            aria-pressed={active}
+                            className={cn(
+                              'rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition',
+                              active
+                                ? getLabelClasses(label)
+                                : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700',
+                            )}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </Field>
+                <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+                  Administrators always see every card, regardless of labels.
+                </p>
+              </div>
+
+              <label className="mt-3 flex items-start gap-2 text-xs text-[color:rgb(31_41_51/0.8)] dark:text-slate-300">
+                <input
+                  id="new-user-must-change-password"
+                  type="checkbox"
+                  checked={newMustChangePassword}
+                  onChange={(e) => setNewMustChangePassword(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--color-rail)] accent-[var(--color-signal)]"
+                />
+                <span>
+                  Require a password change at first sign-in
+                  <span className="mt-0.5 block text-[10px] text-slate-400 dark:text-slate-500">
+                    The account signs in with this temporary password and has to
+                    set its own before it can use the board.
+                  </span>
+                </span>
+              </label>
+
               <div className="mt-3 flex justify-end">
                 <Button type="submit" variant="primary" size="sm">
                   Add User
@@ -590,56 +710,169 @@ export function SettingsModal({ open, onClose, onNotify }: SettingsModalProps) {
                 <ul className="mt-2 max-h-60 space-y-2 overflow-y-auto pr-1">
                   {users.map((u) => {
                     const isSelf = u.id === currentUser?.id
+                    const isEditingLabels = editingLabelsUser?.id === u.id
                     return (
                       <li
                         key={u.id}
-                        className="flex items-center justify-between rounded-lg border border-[var(--color-rail)] bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900"
+                        className="rounded-lg border border-[var(--color-rail)] bg-white text-xs dark:border-slate-800 dark:bg-slate-900"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-slate-800 dark:text-slate-200">
-                              {u.username}
-                            </span>
-                            <span
-                              className={`rounded px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider ${
-                                u.role === 'admin'
-                                  ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
-                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
-                              }`}
-                            >
-                              {u.role}
-                            </span>
-                            {isSelf && (
-                              <span className="text-[10px] text-slate-400">(You)</span>
+                        <div className="flex items-center justify-between gap-2 p-3">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                {u.username}
+                              </span>
+                              <span
+                                className={`rounded px-1.5 py-0.2 text-[10px] font-semibold uppercase tracking-wider ${
+                                  u.role === 'admin'
+                                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
+                                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                }`}
+                              >
+                                {u.role}
+                              </span>
+                              {u.mustChangePassword && (
+                                <span
+                                  className="rounded bg-amber-50 px-1.5 py-0.2 text-[10px] font-semibold tracking-wider text-amber-700 uppercase dark:bg-amber-950/40 dark:text-amber-300"
+                                  title="This account still has to replace the temporary password at first sign-in"
+                                >
+                                  Temp password
+                                </span>
+                              )}
+                              {isSelf && (
+                                <span className="text-[10px] text-slate-400">(You)</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {u.displayName || 'No display name'}
+                            </p>
+                            {/* Label-based task visibility scope */}
+                            {u.role === 'admin' ? (
+                              <p className="mt-1 text-[10px] text-slate-400 dark:text-slate-500">
+                                Sees all cards and labels
+                              </p>
+                            ) : u.labels.length > 0 ? (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {u.labels.map((label) => (
+                                  <span
+                                    key={label}
+                                    className={cn(
+                                      'rounded-full px-1.5 py-0.2 text-[10px] font-medium ring-1 ring-inset',
+                                      getLabelClasses(label),
+                                    )}
+                                  >
+                                    {label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                                No labels — sees no cards
+                              </p>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                            {u.displayName || 'No display name'}
-                          </p>
+
+                          <div className="flex shrink-0 items-center gap-2">
+                            {u.role !== 'admin' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingLabelsUser(u)
+                                  setDraftLabels([...u.labels])
+                                  setLabelsEditError('')
+                                }}
+                              >
+                                Edit labels
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setResettingUser(u)
+                                setResetNewPass('')
+                              }}
+                            >
+                              Reset Password
+                            </Button>
+                            {!isSelf && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUser(u.id)}
+                                className="rounded p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                                title={`Delete ${u.username}`}
+                              >
+                                <TrashIcon className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setResettingUser(u)
-                              setResetNewPass('')
-                            }}
-                          >
-                            Reset Password
-                          </Button>
-                          {!isSelf && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteUser(u.id)}
-                              className="rounded p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
-                              title={`Delete ${u.username}`}
-                            >
-                              <TrashIcon className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
+                        {/* Inline label assignment editor */}
+                        {isEditingLabels && (
+                          <div className="space-y-2 border-t border-[var(--color-rail)] p-3 dark:border-slate-800">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                              Labels for {u.username}
+                            </p>
+                            {boardLabels.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                No labels available yet.
+                              </p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {boardLabels.map((label) => {
+                                  const active = draftLabels.some(
+                                    (item) => item.toLowerCase() === label.toLowerCase(),
+                                  )
+                                  return (
+                                    <button
+                                      key={label}
+                                      type="button"
+                                      onClick={() =>
+                                        setDraftLabels((current) => toggleLabel(current, label))
+                                      }
+                                      aria-pressed={active}
+                                      className={cn(
+                                        'rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset transition',
+                                        active
+                                          ? getLabelClasses(label)
+                                          : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700',
+                                      )}
+                                    >
+                                      {label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                              {draftLabels.length === 0
+                                ? 'No labels selected — this account will see no cards.'
+                                : `This account will only see cards labeled: ${draftLabels.join(', ')}.`}
+                            </p>
+                            {labelsEditError && (
+                              <p className="text-xs text-rose-600 dark:text-rose-400">
+                                {labelsEditError}
+                              </p>
+                            )}
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setEditingLabelsUser(null)
+                                  setDraftLabels([])
+                                  setLabelsEditError('')
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                              <Button size="sm" variant="primary" onClick={handleSaveUserLabels}>
+                                Save labels
+                              </Button>
+                            </div>
+                          </div>
+                        )}
                       </li>
                     )
                   })}

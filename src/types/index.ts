@@ -9,6 +9,26 @@ export interface User {
   username: string
   displayName: string
   role: UserRole
+  /**
+   * Labels assigned to this account. Non-admin accounts only see cards
+   * carrying one of these labels; administrators are unrestricted
+   * (the server returns an empty array for them).
+   */
+  labels: string[]
+  /**
+   * True while the account still uses the temporary password an administrator
+   * issued for it. The account has to set its own password before it can use
+   * the board.
+   */
+  mustChangePassword: boolean
+}
+
+/** Lightweight shape used for live presence (label scope is not shared). */
+export interface PresenceUser {
+  id: string
+  username: string
+  displayName: string
+  role: UserRole
 }
 
 export interface Comment {
@@ -85,3 +105,6 @@ export interface Filters {
 }
 
 export type DragType = 'card' | 'column' | null
+
+/** Format offered by the export menu. */
+export type ExportFormat = 'csv' | 'json'

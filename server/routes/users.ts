@@ -5,29 +5,64 @@ import {
   db,
   hashPassword,
   createSalt,
+  labelExists,
+  normalizeLabelNames,
+  getUserLabels,
   recordAuditLog,
   type UserRow,
 } from '../db'
 
 export const usersRouter = Router()
 
-// List users
+/** Returns the label names that are not present in the label catalog. */
+function findUnknownLabels(labels: string[]): string[] {
+  return labels.filter((name) => !labelExists(name))
+}
+
+// List users (including their assigned labels)
 usersRouter.get('/', requireAdmin, (req: Request, res: Response): void => {
-  const users = db.prepare(`
-    SELECT id, username, role, display_name as displayName, created_at as createdAt
+  const rows = db.prepare(`
+    SELECT
+      id,
+      username,
+      role,
+      display_name as displayName,
+      must_change_password as mustChangePassword,
+      created_at as createdAt
     FROM users
     ORDER BY created_at ASC
-  `).all()
+  `).all() as Array<{
+    id: string
+    username: string
+    role: 'admin' | 'viewer'
+    displayName: string
+    mustChangePassword: number
+    createdAt: string
+  }>
+
+  const users = rows.map((row) => ({
+    id: row.id,
+    username: row.username,
+    role: row.role,
+    displayName: row.displayName,
+    createdAt: row.createdAt,
+    labels: getUserLabels(row.id),
+    mustChangePassword: row.mustChangePassword === 1,
+  }))
 
   res.json({ users })
 })
 
 // Create user
 usersRouter.post('/', requireAdmin, (req: Request, res: Response): void => {
-  const { username, password, displayName, role } = req.body || {}
+  const { username, password, displayName, role, labels, mustChangePassword } = req.body || {}
   const cleanUsername = (username || '').trim().toLowerCase()
   const cleanDisplayName = (displayName || '').trim() || cleanUsername
   const cleanRole = role === 'admin' ? 'admin' : 'viewer'
+  const cleanLabels = normalizeLabelNames(labels)
+  // New accounts must replace the administrator-issued password at first
+  // sign-in unless the admin explicitly opts out.
+  const requirePasswordChange = mustChangePassword === false ? 0 : 1
 
   if (!cleanUsername || cleanUsername.length < 3) {
     res.status(400).json({ error: 'Username must be at least 3 characters long.' })
@@ -35,6 +70,11 @@ usersRouter.post('/', requireAdmin, (req: Request, res: Response): void => {
   }
   if (!password || typeof password !== 'string' || password.length < 6) {
     res.status(400).json({ error: 'Password must be at least 6 characters long.' })
+    return
+  }
+  const unknownLabels = findUnknownLabels(cleanLabels)
+  if (unknownLabels.length > 0) {
+    res.status(400).json({ error: `Unknown label(s): ${unknownLabels.join(', ')}.` })
     return
   }
 
@@ -49,20 +89,89 @@ usersRouter.post('/', requireAdmin, (req: Request, res: Response): void => {
   const id = crypto.randomUUID()
   const now = new Date().toISOString()
 
-  db.prepare(`
-    INSERT INTO users (id, username, password_hash, salt, role, display_name, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, cleanUsername, passwordHash, salt, cleanRole, cleanDisplayName, now)
+  const insertUser = db.prepare(`
+    INSERT INTO users (id, username, password_hash, salt, role, display_name, must_change_password, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  const insertAssignment = db.prepare('INSERT OR IGNORE INTO user_labels (user_id, label_name, created_at) VALUES (?, ?, ?)')
 
-  recordAuditLog(req.user!.id, req.user!.username, 'CREATE_USER', 'user', id, `${cleanUsername} (${cleanRole})`, req.clientIp)
+  db.exec('BEGIN TRANSACTION;')
+  try {
+    insertUser.run(id, cleanUsername, passwordHash, salt, cleanRole, cleanDisplayName, requirePasswordChange, now)
+    cleanLabels.forEach((label) => insertAssignment.run(id, label, now))
+    db.exec('COMMIT;')
+  } catch (err) {
+    db.exec('ROLLBACK;')
+    res.status(500).json({ error: 'Failed to create user: ' + String(err) })
+    return
+  }
+
+  recordAuditLog(
+    req.user!.id,
+    req.user!.username,
+    'CREATE_USER',
+    'user',
+    id,
+    `${cleanUsername} (${cleanRole})${cleanLabels.length > 0 ? ` labels: ${cleanLabels.join(', ')}` : ''}${
+      requirePasswordChange ? ' — password change required at first login' : ''
+    }`,
+    req.clientIp,
+  )
 
   res.status(201).json({
     id,
     username: cleanUsername,
     displayName: cleanDisplayName,
     role: cleanRole,
+    labels: cleanLabels,
+    mustChangePassword: requirePasswordChange === 1,
     createdAt: now,
   })
+})
+
+// Replace the labels assigned to an account (label-based task visibility)
+usersRouter.put('/:id/labels', requireAdmin, (req: Request, res: Response): void => {
+  const { id } = req.params
+  const cleanLabels = normalizeLabelNames(req.body?.labels)
+
+  const target = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id) as UserRow | undefined
+  if (!target) {
+    res.status(404).json({ error: 'User not found.' })
+    return
+  }
+
+  const unknownLabels = findUnknownLabels(cleanLabels)
+  if (unknownLabels.length > 0) {
+    res.status(400).json({ error: `Unknown label(s): ${unknownLabels.join(', ')}.` })
+    return
+  }
+
+  const now = new Date().toISOString()
+  const clearAssignments = db.prepare('DELETE FROM user_labels WHERE user_id = ?')
+  const insertAssignment = db.prepare('INSERT OR IGNORE INTO user_labels (user_id, label_name, created_at) VALUES (?, ?, ?)')
+
+  db.exec('BEGIN TRANSACTION;')
+  try {
+    clearAssignments.run(id)
+    cleanLabels.forEach((label) => insertAssignment.run(id, label, now))
+    db.exec('COMMIT;')
+  } catch (err) {
+    db.exec('ROLLBACK;')
+    res.status(500).json({ error: 'Failed to update labels: ' + String(err) })
+    return
+  }
+
+  recordAuditLog(
+    req.user!.id,
+    req.user!.username,
+    'UPDATE_USER_LABELS',
+    'user',
+    id,
+    `${target.username} -> ${cleanLabels.length > 0 ? cleanLabels.join(', ') : '(no labels)'}`,
+    req.clientIp,
+  )
+
+  res.json({ success: true, id, labels: cleanLabels })
 })
 
 // Reset password for a user

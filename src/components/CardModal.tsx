@@ -44,7 +44,11 @@ export function CardModal({
   const labelsId = useId()
   const titleRef = useRef<HTMLInputElement>(null)
 
-  const [activeTab, setActiveTab] = useState<'details' | 'comments'>('details')
+  // Non-admin accounts only get the writable Activity & Updates tab, so they
+  // land there instead of on a details tab they cannot edit.
+  const [activeTab, setActiveTab] = useState<'details' | 'comments'>(
+    readOnly ? 'comments' : 'details',
+  )
   const [title, setTitle] = useState(card?.title ?? '')
   const [description, setDescription] = useState(card?.description ?? '')
   const [priority, setPriority] = useState<Priority>(card?.priority ?? 'medium')
@@ -208,7 +212,7 @@ export function CardModal({
   const footer = readOnly ? (
     <div className="flex items-center justify-between">
       <span className="text-xs text-slate-500 dark:text-slate-400">
-        Viewing card (Non-admin view-only mode)
+        Updates only — task details are managed by an administrator.
       </span>
       <Button variant="secondary" onClick={onClose}>
         Close
@@ -281,20 +285,24 @@ export function CardModal({
       description={`in ${columnTitle}`}
       footer={footer}
     >
-      {/* Navigation tabs: Details vs. Updates / Comments (Monday.com style) */}
+      {/* Navigation tabs: Details vs. Updates / Comments (Monday.com style).
+          Non-admin accounts only get the Activity & Updates tab, which is the
+          one place they can write. */}
       {card && (
         <div className="mb-4 flex border-b border-[var(--color-rail)] dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setActiveTab('details')}
-            className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
-              activeTab === 'details'
-                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-            }`}
-          >
-            Task Details
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('details')}
+              className={`flex-1 border-b-2 py-2 text-center text-xs font-semibold transition ${
+                activeTab === 'details'
+                  ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              Task Details
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setActiveTab('comments')}

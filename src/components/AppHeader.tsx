@@ -2,29 +2,18 @@ import { useEffect, useState } from 'react'
 import { socket } from '../services/socket'
 import { useAuthStore } from '../store/authStore'
 import { useUiStore } from '../store/uiStore'
-import type { ConnectionStatus, User } from '../types'
+import type { ConnectionStatus, PresenceUser } from '../types'
 import { Button } from './ui/Button'
-import {
-  DownloadIcon,
-  LogoMark,
-  MoonIcon,
-  SettingsIcon,
-  SunIcon,
-  UploadIcon,
-} from './ui/icons'
+import { LockIcon, LogoMark, MoonIcon, SettingsIcon, SunIcon } from './ui/icons'
 
 interface AppHeaderProps {
   readOnly: boolean
-  onExport: () => void
-  onImportClick: () => void
   onSettingsClick: () => void
   settingsDisabled?: boolean
 }
 
 export function AppHeader({
   readOnly,
-  onExport,
-  onImportClick,
   onSettingsClick,
   settingsDisabled = false,
 }: AppHeaderProps) {
@@ -32,10 +21,9 @@ export function AppHeader({
   const toggleTheme = useUiStore((state) => state.toggleTheme)
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
-  const requestAdminLogin = useAuthStore((state) => state.requestAdminLogin)
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(() => socket.getStatus())
-  const [onlineUsers, setOnlineUsers] = useState<User[]>(() => socket.getOnlineUsers())
+  const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>(() => socket.getOnlineUsers())
 
   useEffect(() => {
     const unsubStatus = socket.onStatusChange((status) => setConnectionStatus(status))
@@ -47,7 +35,7 @@ export function AppHeader({
   }, [])
 
   return (
-    <header className="shrink-0 border-b border-[var(--color-rail)] bg-[var(--color-paper)]/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
+    <header className="relative z-30 shrink-0 border-b border-[var(--color-rail)] bg-[var(--color-paper)]/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
       <div className="flex items-center gap-3 px-4 py-3 sm:px-6">
         <LogoMark className="h-9 w-9 shrink-0 rounded-md ring-1 ring-[var(--color-rail)] dark:ring-slate-800" />
         <div className="min-w-0">
@@ -107,6 +95,25 @@ export function AppHeader({
         </div>
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          {/* Label scope indicator: which tasks this account may see */}
+          {user && user.role !== 'admin' && (
+            <span
+              className="hidden max-w-[300px] items-center gap-1.5 rounded-lg bg-indigo-50/80 px-2.5 py-1 text-[11px] text-indigo-700 ring-1 ring-indigo-600/15 lg:inline-flex dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-400/20"
+              title={
+                user.labels.length > 0
+                  ? `This account only sees cards labeled: ${user.labels.join(', ')}`
+                  : 'This account has no labels assigned, so it sees no cards'
+              }
+            >
+              <LockIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {user.labels.length > 0
+                  ? `Your labels: ${user.labels.join(', ')}`
+                  : 'No labels assigned'}
+              </span>
+            </span>
+          )}
+
           {/* User profile & role pill */}
           {user && (
             <div className="mr-1 flex items-center gap-2 rounded-lg bg-slate-100/80 px-2.5 py-1 text-xs dark:bg-slate-900">
@@ -125,66 +132,29 @@ export function AppHeader({
             </div>
           )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onExport}
-            aria-label="Export board as JSON"
-            title="Export board as JSON"
-            className="h-8"
-          >
-            <DownloadIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
-
           {!readOnly && (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onImportClick}
-                aria-label="Import board from JSON"
-                title="Import board from JSON"
-                className="h-8"
-              >
-                <UploadIcon className="h-4 w-4" />
-                <span className="hidden sm:inline">Import</span>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={onSettingsClick}
-                disabled={settingsDisabled}
-                aria-label="Open settings"
-                title={settingsDisabled ? 'Close the card editor first' : 'Open settings'}
-                className="h-8 w-8"
-              >
-                <SettingsIcon className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-
-          {user && user.role === 'admin' && (
             <Button
               variant="ghost"
-              size="sm"
-              onClick={logout}
-              className="h-8 text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-300"
-              title="Sign out of admin account"
+              size="icon"
+              onClick={onSettingsClick}
+              disabled={settingsDisabled}
+              aria-label="Open settings"
+              title={settingsDisabled ? 'Close the card editor first' : 'Open settings'}
+              className="h-8 w-8"
             >
-              Sign out
+              <SettingsIcon className="h-4 w-4" />
             </Button>
           )}
 
-          {user && user.role !== 'admin' && (
+          {user && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={requestAdminLogin}
-              className="h-8 text-xs text-slate-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-300"
-              title="Sign in as administrator"
+              onClick={() => void logout()}
+              className="h-8 text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-300"
+              title="Sign out of this account"
             >
-              Admin sign in
+              Sign out
             </Button>
           )}
 

@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from 'express'
 import crypto from 'node:crypto'
 import { requireAuth, requireAdmin } from '../auth'
 import { db, recordAuditLog, type ColumnRow, type CardRow, type LabelRow } from '../db'
+import { canSeeCard, getAllowedLabels, labelsAllowCard, parseCardLabels } from '../access'
+import { isProtectedLabel } from '../../shared/planLabels'
 import { broadcastWsEvent } from '../ws'
 
 export const boardRouter = Router()
@@ -46,13 +48,21 @@ function formatCard(row: CardRow): FormattedCard {
 }
 
 // GET full board
+// Cards and labels are filtered by the requesting account's assigned labels:
+// administrators receive everything, other accounts only receive cards that
+// carry at least one of their labels (enforced here, not in the frontend).
 boardRouter.get('/', requireAuth, (req: Request, res: Response): void => {
   const columns = (db.prepare('SELECT id, title, position as `order` FROM columns ORDER BY position ASC').all() as Array<{ id: string; title: string; order: number }>)
   const cardRows = db.prepare('SELECT * FROM cards ORDER BY column_id, position ASC').all() as CardRow[]
   const labelRows = db.prepare('SELECT name FROM labels ORDER BY name ASC').all() as LabelRow[]
 
-  const cards = cardRows.map(formatCard)
-  const labels = labelRows.map((l) => l.name)
+  const allowed = getAllowedLabels(req.user!)
+  const cards = cardRows
+    .map(formatCard)
+    .filter((card) => labelsAllowCard(allowed, card.labels))
+  const labels = labelRows
+    .map((label) => label.name)
+    .filter((name) => allowed === null || allowed.some((assigned) => assigned.toLowerCase() === name.toLowerCase()))
 
   res.json({
     columns,
@@ -86,6 +96,32 @@ boardRouter.post('/columns', requireAdmin, (req: Request, res: Response): void =
   broadcastWsEvent({ type: 'COLUMN_CREATED', payload: column, senderId: req.user!.id })
 
   res.status(201).json(column)
+})
+
+// Reorder columns
+// NOTE: this route must be registered before '/columns/:id'. Express matches
+// in registration order, so '/columns/reorder' would otherwise be swallowed
+// by the rename handler (id = 'reorder'), which fails with 400.
+boardRouter.put('/columns/reorder', requireAdmin, (req: Request, res: Response): void => {
+  const { columnIds } = req.body || {}
+  if (!Array.isArray(columnIds)) {
+    res.status(400).json({ error: 'columnIds array is required.' })
+    return
+  }
+
+  const updatePos = db.prepare('UPDATE columns SET position = ? WHERE id = ?')
+  columnIds.forEach((id: string, idx: number) => {
+    updatePos.run(idx, id)
+  })
+
+  recordAuditLog(req.user!.id, req.user!.username, 'REORDER_COLUMNS', 'columns', undefined, undefined, req.clientIp)
+  broadcastWsEvent({
+    type: 'COLUMNS_REORDERED',
+    payload: { columnIds },
+    senderId: req.user!.id,
+  })
+
+  res.json({ success: true, columnIds })
 })
 
 // Rename column
@@ -141,29 +177,6 @@ boardRouter.delete('/columns/:id', requireAdmin, (req: Request, res: Response): 
   res.json({ success: true, id })
 })
 
-// Reorder columns
-boardRouter.put('/columns/reorder', requireAdmin, (req: Request, res: Response): void => {
-  const { columnIds } = req.body || {}
-  if (!Array.isArray(columnIds)) {
-    res.status(400).json({ error: 'columnIds array is required.' })
-    return
-  }
-
-  const updatePos = db.prepare('UPDATE columns SET position = ? WHERE id = ?')
-  columnIds.forEach((id: string, idx: number) => {
-    updatePos.run(idx, id)
-  })
-
-  recordAuditLog(req.user!.id, req.user!.username, 'REORDER_COLUMNS', 'columns', undefined, undefined, req.clientIp)
-  broadcastWsEvent({
-    type: 'COLUMNS_REORDERED',
-    payload: { columnIds },
-    senderId: req.user!.id,
-  })
-
-  res.json({ success: true, columnIds })
-})
-
 // Add card
 boardRouter.post('/cards', requireAdmin, (req: Request, res: Response): void => {
   const { columnId, title, description, priority, dueDate, labels, assignee } = req.body || {}
@@ -216,7 +229,7 @@ boardRouter.post('/cards', requireAdmin, (req: Request, res: Response): void => 
   const formatted = formatCard(newCardRow)
 
   recordAuditLog(req.user!.id, req.user!.username, 'CREATE_CARD', 'card', id, cleanTitle, req.clientIp)
-  broadcastWsEvent({ type: 'CARD_CREATED', payload: formatted, senderId: req.user!.id })
+  broadcastWsEvent({ type: 'CARD_CREATED', payload: formatted, senderId: req.user!.id, cardLabels: cleanLabels })
 
   res.status(201).json(formatted)
 })
@@ -270,20 +283,42 @@ boardRouter.put('/cards/:id', requireAdmin, (req: Request, res: Response): void 
   const updatedRow = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as CardRow
   const formatted = formatCard(updatedRow)
 
+  // Send the union of the previous and new label sets: clients that could
+  // see the card before the edit must receive the update too, so they can
+  // drop it when it no longer carries any of their labels.
+  const cardLabels = Array.from(new Set([...parseCardLabels(existing.labels), ...formatted.labels]))
+
   recordAuditLog(req.user!.id, req.user!.username, 'UPDATE_CARD', 'card', id, cleanTitle, req.clientIp)
-  broadcastWsEvent({ type: 'CARD_UPDATED', payload: formatted, senderId: req.user!.id })
+  broadcastWsEvent({ type: 'CARD_UPDATED', payload: formatted, senderId: req.user!.id, cardLabels })
 
   res.json(formatted)
 })
 
 // Move card across columns or within a column
-boardRouter.put('/cards/:id/move', requireAdmin, (req: Request, res: Response): void => {
+boardRouter.put('/cards/:id/move', requireAuth, (req: Request, res: Response): void => {
   const { id } = req.params
   const { toColumnId, toIndex } = req.body || {}
 
   const card = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as CardRow | undefined
   if (!card) {
     res.status(404).json({ error: 'Card not found.' })
+    return
+  }
+
+  // Administrators may move any card. Label-scoped accounts may move the
+  // cards they are allowed to see (cards carrying one of their labels) so
+  // they can move work through the board, but nothing else.
+  if (!canSeeCard(req.user!, parseCardLabels(card.labels))) {
+    recordAuditLog(
+      req.user!.id,
+      req.user!.username,
+      'UNAUTHORIZED_CARD_MOVE',
+      'card',
+      id,
+      undefined,
+      req.clientIp,
+    )
+    res.status(403).json({ error: 'You can only move cards within your assigned labels.' })
     return
   }
 
@@ -322,6 +357,7 @@ boardRouter.put('/cards/:id/move', requireAdmin, (req: Request, res: Response): 
     type: 'CARD_MOVED',
     payload: { cardId: id, fromColumnId, toColumnId, toIndex: targetIndex },
     senderId: req.user!.id,
+    cardLabels: parseCardLabels(card.labels),
   })
 
   res.json({ success: true, cardId: id, toColumnId, toIndex: targetIndex })
@@ -352,6 +388,8 @@ boardRouter.delete('/cards/:id', requireAdmin, (req: Request, res: Response): vo
     type: 'CARD_DELETED',
     payload: { id, columnId: existing.column_id },
     senderId: req.user!.id,
+    // The row is already gone, so the labels are taken from the snapshot.
+    cardLabels: parseCardLabels(existing.labels),
   })
 
   res.json({ success: true, id })
@@ -370,7 +408,7 @@ boardRouter.post('/labels', requireAdmin, (req: Request, res: Response): void =>
   db.prepare('INSERT OR IGNORE INTO labels (id, name, created_at) VALUES (?, ?, ?)').run(crypto.randomUUID(), cleanName, now)
 
   recordAuditLog(req.user!.id, req.user!.username, 'CREATE_LABEL', 'label', undefined, cleanName, req.clientIp)
-  broadcastWsEvent({ type: 'LABEL_CREATED', payload: { name: cleanName }, senderId: req.user!.id })
+  broadcastWsEvent({ type: 'LABEL_CREATED', payload: { name: cleanName }, senderId: req.user!.id, adminOnly: true })
 
   res.status(201).json({ name: cleanName })
 })
@@ -402,11 +440,24 @@ boardRouter.put('/labels/:name', requireAdmin, (req: Request, res: Response): vo
     }
   })
 
+  // Cascade the rename to account label assignments so label-based access
+  // control keeps following the label. Delete + re-insert avoids unique
+  // conflicts when an account already holds the new name or when only the
+  // casing of the name changed.
+  const now = new Date().toISOString()
+  const affectedUsers = db
+    .prepare('SELECT user_id FROM user_labels WHERE label_name = ? COLLATE NOCASE')
+    .all(oldName) as Array<{ user_id: string }>
+  db.prepare('DELETE FROM user_labels WHERE label_name = ? COLLATE NOCASE').run(oldName)
+  const insertAssignment = db.prepare('INSERT OR IGNORE INTO user_labels (user_id, label_name, created_at) VALUES (?, ?, ?)')
+  affectedUsers.forEach((row) => insertAssignment.run(row.user_id, cleanNewName, now))
+
   recordAuditLog(req.user!.id, req.user!.username, 'RENAME_LABEL', 'label', undefined, `${oldName} -> ${cleanNewName}`, req.clientIp)
   broadcastWsEvent({
     type: 'LABEL_RENAMED',
     payload: { oldName, newName: cleanNewName },
     senderId: req.user!.id,
+    adminOnly: true,
   })
 
   res.json({ success: true, oldName, newName: cleanNewName })
@@ -414,7 +465,18 @@ boardRouter.put('/labels/:name', requireAdmin, (req: Request, res: Response): vo
 
 boardRouter.delete('/labels/:name', requireAdmin, (req: Request, res: Response): void => {
   const name = decodeURIComponent(req.params.name).trim()
+
+  // The fixed Plan label set backs account-level access control and cannot
+  // be deleted (it may still be renamed).
+  if (isProtectedLabel(name)) {
+    res.status(409).json({ error: 'This label belongs to the fixed Plan label set and cannot be deleted.' })
+    return
+  }
+
   db.prepare('DELETE FROM labels WHERE name = ? COLLATE NOCASE').run(name)
+  // Drop account assignments for the removed label so a later re-creation
+  // of the same name does not silently re-grant access.
+  db.prepare('DELETE FROM user_labels WHERE label_name = ? COLLATE NOCASE').run(name)
 
   // Remove from card labels
   const cards = db.prepare('SELECT id, labels FROM cards').all() as Array<{ id: string; labels: string }>
@@ -431,7 +493,7 @@ boardRouter.delete('/labels/:name', requireAdmin, (req: Request, res: Response):
   })
 
   recordAuditLog(req.user!.id, req.user!.username, 'DELETE_LABEL', 'label', undefined, name, req.clientIp)
-  broadcastWsEvent({ type: 'LABEL_DELETED', payload: { name }, senderId: req.user!.id })
+  broadcastWsEvent({ type: 'LABEL_DELETED', payload: { name }, senderId: req.user!.id, adminOnly: true })
 
   res.json({ success: true, name })
 })

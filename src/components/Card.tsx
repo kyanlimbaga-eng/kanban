@@ -1,7 +1,9 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties, KeyboardEvent } from 'react'
+import { useAuthStore } from '../store/authStore'
 import type { Card as CardModel } from '../types'
+import { canMoveCard } from '../utils/access'
 import { cn } from '../utils/cn'
 import { formatDueDate, isDueToday, isOverdue } from '../utils/dates'
 import { getLabelClasses } from '../utils/labels'
@@ -97,6 +99,11 @@ interface CardProps {
 }
 
 export function Card({ card, onOpen, readOnly = false }: CardProps) {
+  const user = useAuthStore((state) => state.user)
+  // Administrators can move any card; label-scoped accounts can move the
+  // cards carrying one of their assigned labels.
+  const draggable = canMoveCard(user, card)
+
   const {
     attributes,
     listeners,
@@ -107,7 +114,7 @@ export function Card({ card, onOpen, readOnly = false }: CardProps) {
   } = useSortable({
     id: card.id,
     data: { type: 'card', columnId: card.columnId },
-    disabled: readOnly,
+    disabled: !draggable,
   })
 
   const style: CSSProperties = {
@@ -116,7 +123,7 @@ export function Card({ card, onOpen, readOnly = false }: CardProps) {
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (!readOnly) {
+    if (draggable) {
       listeners?.onKeyDown?.(event)
     }
     if (!event.defaultPrevented && event.key === 'Enter') {
@@ -129,19 +136,21 @@ export function Card({ card, onOpen, readOnly = false }: CardProps) {
     <article
       ref={setNodeRef}
       style={style}
-      {...(readOnly ? {} : attributes)}
-      {...(readOnly ? {} : listeners)}
+      {...(draggable ? attributes : {})}
+      {...(draggable ? listeners : {})}
       onKeyDown={handleKeyDown}
       onClick={() => onOpen(card.id)}
       aria-label={
-        readOnly
-          ? `${card.title}. Press Enter to view details.`
-          : `${card.title}. Press Enter to edit or Space to drag.`
+        draggable
+          ? `${card.title}. Press Enter to view details. Press Space to drag.`
+          : `${card.title}. Press Enter to view details.`
       }
       className={cn(
         'group relative rounded-sm border border-[var(--color-rail)] bg-[var(--color-surface)] p-3 shadow-[0_1px_0_rgba(31,41,51,0.04)] ring-1 ring-transparent transition-[box-shadow,border-color,opacity,transform] select-none [-webkit-touch-callout:none]',
         'hover:border-[#cfc9bc] hover:shadow-[0_6px_16px_rgba(31,41,51,0.08)] focus-visible:ring-2 focus-visible:ring-[var(--color-signal)]/50 focus-visible:outline-none',
-        readOnly ? 'cursor-pointer' : 'cursor-grab touch-manipulation active:cursor-grabbing',
+        draggable
+          ? 'cursor-grab touch-manipulation active:cursor-grabbing'
+          : 'cursor-pointer',
         'dark:border-slate-700/80 dark:bg-slate-800/90 dark:hover:border-slate-600 dark:focus-visible:ring-indigo-500/60',
         isDragging && 'opacity-40',
       )}

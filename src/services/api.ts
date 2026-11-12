@@ -172,10 +172,24 @@ export const api = {
     return request<{ users: User[] }>('/api/users')
   },
 
-  async createUser(username: string, password: string, displayName: string, role: UserRole): Promise<User> {
+  async createUser(
+    username: string,
+    password: string,
+    displayName: string,
+    role: UserRole,
+    labels: string[] = [],
+    mustChangePassword = true,
+  ): Promise<User> {
     return request<User>('/api/users', {
       method: 'POST',
-      body: JSON.stringify({ username, password, displayName, role }),
+      body: JSON.stringify({ username, password, displayName, role, labels, mustChangePassword }),
+    })
+  },
+
+  async updateUserLabels(userId: string, labels: string[]): Promise<{ id: string; labels: string[] }> {
+    return request<{ id: string; labels: string[] }>(`/api/users/${encodeURIComponent(userId)}/labels`, {
+      method: 'PUT',
+      body: JSON.stringify({ labels }),
     })
   },
 

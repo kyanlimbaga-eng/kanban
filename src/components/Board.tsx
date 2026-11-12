@@ -17,19 +17,18 @@ import type {
 } from '@dnd-kit/core'
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
 import { useBoardStore } from '../store/boardStore'
+import { useAuthStore } from '../store/authStore'
 import { useUiStore } from '../store/uiStore'
 import type {
   Card as CardModel,
   Column as ColumnModel,
   DragType,
 } from '../types'
+import { canMoveCard } from '../utils/access'
 import { sortByPosition } from '../utils/array'
 import { cardMatchesFilters, hasActiveFilters } from '../utils/filters'
 import { normalizeLabels } from '../utils/labels'
-import { exportBoardToFile, parseBoardJson } from '../utils/importExport'
-import type { ParsedImport } from '../utils/importExport'
 import { AppHeader } from './AppHeader'
 import { BoardEmptyState } from './BoardEmptyState'
 import { CardModal } from './CardModal'
@@ -88,12 +87,12 @@ export function Board({ readOnly }: BoardProps) {
   const columns = useBoardStore((state) => state.columns)
   const cards = useBoardStore((state) => state.cards)
   const boardLabels = useBoardStore((state) => state.labels)
+  const currentUser = useAuthStore((state) => state.user)
   const addColumn = useBoardStore((state) => state.addColumn)
   const renameColumn = useBoardStore((state) => state.renameColumn)
   const deleteColumn = useBoardStore((state) => state.deleteColumn)
   const reorderColumn = useBoardStore((state) => state.reorderColumn)
   const moveCard = useBoardStore((state) => state.moveCard)
-  const replaceBoard = useBoardStore((state) => state.replaceBoard)
 
   const filters = useUiStore((state) => state.filters)
   const setSearch = useUiStore((state) => state.setSearch)
@@ -106,20 +105,19 @@ export function Board({ readOnly }: BoardProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [columnDialog, setColumnDialog] = useState<ColumnDialogState>(null)
   const [columnToDelete, setColumnToDelete] = useState<ColumnModel | null>(null)
-  const [pendingImport, setPendingImport] = useState<ParsedImport | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const suppressClickRef = useRef(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const boardRef = useRef<HTMLElement>(null)
 
   const sensors = useSensors(
+    // Sensors stay enabled for every role: whether a card can actually be
+    // dragged is decided per card (see Card.tsx), while columns remain
+    // admin-only through their own disabled sortable.
     useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
-      disabled: readOnly,
     }),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 250, tolerance: 8 },
-      disabled: readOnly,
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -128,7 +126,6 @@ export function Board({ readOnly }: BoardProps) {
         cancel: [KeyboardCode.Esc],
         end: [KeyboardCode.Space, KeyboardCode.Tab],
       },
-      disabled: readOnly,
     }),
   )
 
@@ -244,8 +241,14 @@ export function Board({ readOnly }: BoardProps) {
   }
 
   function handleDragStart(event: DragStartEvent) {
-    if (readOnly) return
     const type = event.active.data.current?.type as DragType
+    if (type === 'column') {
+      // Reordering columns stays an administrator action.
+      if (readOnly) return
+    } else if (type === 'card') {
+      const card = cards.find((item) => item.id === String(event.active.id))
+      if (!card || !canMoveCard(currentUser, card)) return
+    }
     suppressClickRef.current = true
     if (type === 'card' || type === 'column') {
       setActiveDrag({ type, id: String(event.active.id) })
@@ -266,10 +269,12 @@ export function Board({ readOnly }: BoardProps) {
     const { active, over } = event
     setActiveDrag(null)
     scheduleClickSuppressionReset()
-    if (readOnly || !over) return
+    if (!over) return
 
     const activeType = active.data.current?.type as DragType
     if (activeType === 'column') {
+      // Reordering columns stays an administrator action.
+      if (readOnly) return
       if (over.data.current?.type === 'column' && active.id !== over.id) {
         reorderColumn(String(active.id), String(over.id))
       }
@@ -279,7 +284,7 @@ export function Board({ readOnly }: BoardProps) {
     if (activeType !== 'card' || active.id === over.id) return
 
     const card = cards.find((item) => item.id === String(active.id))
-    if (!card) return
+    if (!card || !canMoveCard(currentUser, card)) return
 
     const overType = over.data.current?.type as
       | 'card'
@@ -331,44 +336,6 @@ export function Board({ readOnly }: BoardProps) {
     }
   }
 
-  function handleExport() {
-    const exportCards = orderedColumns.flatMap((column) =>
-      sortByPosition(cards.filter((card) => card.columnId === column.id)),
-    )
-    const filename = exportBoardToFile({
-      columns: orderedColumns,
-      cards: exportCards,
-      labels: boardLabels,
-    })
-    showToast(`Board exported as ${filename}.`)
-  }
-
-  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (readOnly || !file) return
-
-    if (file.size > 2 * 1024 * 1024) {
-      showToast(
-        'That file is too large. Choose a JSON export under 2 MB.',
-        'error',
-      )
-      return
-    }
-
-    try {
-      const text = await file.text()
-      setPendingImport(parseBoardJson(text))
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : 'Import failed: the file could not be read.',
-        'error',
-      )
-    }
-  }
-
   function handleDeleteColumn() {
     if (!columnToDelete) return
     deleteColumn(columnToDelete.id)
@@ -380,8 +347,6 @@ export function Board({ readOnly }: BoardProps) {
     <div className="flex h-dvh flex-col overflow-hidden bg-[var(--color-paper)] text-[var(--color-ink)] dark:bg-slate-950 dark:text-slate-100">
       <AppHeader
         readOnly={readOnly}
-        onExport={handleExport}
-        onImportClick={() => fileInputRef.current?.click()}
         onSettingsClick={() => setSettingsOpen(true)}
         settingsDisabled={cardModal !== null}
       />
@@ -449,14 +414,6 @@ export function Board({ readOnly }: BoardProps) {
         </DragOverlay>
       </DndContext>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={handleImportFile}
-      />
-
       {cardModal?.mode === 'create' && !readOnly && (
         <CardModal
           key={`new-${cardModal.columnId}`}
@@ -522,50 +479,6 @@ export function Board({ readOnly }: BoardProps) {
         confirmLabel="Delete column"
         onClose={() => setColumnToDelete(null)}
         onConfirm={handleDeleteColumn}
-      />
-
-      <ConfirmDialog
-        open={pendingImport !== null && !readOnly}
-        title="Replace this board?"
-        tone="primary"
-        description={
-          pendingImport ? (
-            <div className="space-y-2">
-              <p>
-                This replaces the board saved in this browser with{' '}
-                <strong className="font-semibold text-slate-900 dark:text-white">
-                  {pendingImport.columnCount}{' '}
-                  {pendingImport.columnCount === 1 ? 'column' : 'columns'}
-                </strong>{' '}
-                and{' '}
-                <strong className="font-semibold text-slate-900 dark:text-white">
-                  {pendingImport.cardCount}{' '}
-                  {pendingImport.cardCount === 1 ? 'card' : 'cards'}
-                </strong>
-                .
-              </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                Export your current board first if you need a backup. This
-                action can't be undone.
-              </p>
-            </div>
-          ) : null
-        }
-        confirmLabel="Import board"
-        onClose={() => setPendingImport(null)}
-        onConfirm={() => {
-          if (!pendingImport) return
-          replaceBoard(pendingImport.board)
-          clearFilters()
-          setPendingImport(null)
-          showToast(
-            `Imported ${pendingImport.columnCount} ${
-              pendingImport.columnCount === 1 ? 'column' : 'columns'
-            } and ${pendingImport.cardCount} ${
-              pendingImport.cardCount === 1 ? 'card' : 'cards'
-            }.`,
-          )
-        }}
       />
 
       <SettingsModal

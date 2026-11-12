@@ -1,12 +1,22 @@
 import type { Request, Response, NextFunction } from 'express'
 import crypto from 'node:crypto'
-import { db, recordAuditLog, type UserRow } from './db'
+import { db, getUserLabels, recordAuditLog, type UserRow } from './db'
 
 export interface AuthenticatedUser {
   id: string
   username: string
   displayName: string
   role: 'admin' | 'viewer'
+  /**
+   * Labels assigned to this account. Only meaningful for non-admin roles:
+   * administrators are unrestricted and receive an empty array.
+   */
+  labels: string[]
+  /**
+   * True while the account still uses the temporary password an administrator
+   * set for it. Such accounts may only change their password.
+   */
+  mustChangePassword: boolean
 }
 
 declare global {
@@ -115,7 +125,8 @@ export function getSessionUser(sessionId: string): AuthenticatedUser | null {
   if (!sessionId) return null
 
   const row = db.prepare(`
-    SELECT s.id as session_id, s.expires_at, u.id, u.username, u.display_name, u.role
+    SELECT s.id as session_id, s.expires_at, u.id, u.username, u.display_name, u.role,
+           u.must_change_password as must_change_password
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.id = ?
@@ -133,6 +144,11 @@ export function getSessionUser(sessionId: string): AuthenticatedUser | null {
     username: row.username,
     displayName: row.display_name,
     role: row.role,
+    // Read fresh from the DB on every request so label changes made by an
+    // admin take effect immediately for the next API call.
+    labels: row.role === 'admin' ? [] : getUserLabels(row.id),
+    // Likewise for the "must change password" state.
+    mustChangePassword: row.must_change_password === 1,
   }
 }
 
@@ -178,4 +194,31 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     return
   }
   next()
+}
+
+// Endpoints an account with a temporary password may still reach.
+const PASSWORD_CHANGE_EXEMPT_PATHS = new Set([
+  '/api/auth/change-password',
+  '/api/auth/me',
+  '/api/auth/logout',
+])
+
+/**
+ * Blocks every endpoint for accounts that still use the temporary password an
+ * administrator set for them. Such an account can only read its own session,
+ * change the password or sign out.
+ */
+export function requirePasswordChanged(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user?.mustChangePassword) {
+    next()
+    return
+  }
+  if (PASSWORD_CHANGE_EXEMPT_PATHS.has(req.path)) {
+    next()
+    return
+  }
+  res.status(403).json({
+    error: 'You must change your temporary password before continuing.',
+    code: 'PASSWORD_CHANGE_REQUIRED',
+  })
 }

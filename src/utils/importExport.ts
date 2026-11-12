@@ -1,5 +1,6 @@
 import type { Board, Card, Column, Priority } from '../types'
 import { isValidDateString, todayISO } from './dates'
+import { downloadTextFile } from './download'
 import { normalizeLabels } from './labels'
 import { PRIORITIES } from './priority'
 
@@ -189,19 +190,7 @@ export function exportBoardToFile(board: Board): string {
     exportedAt: new Date().toISOString(),
     board,
   }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: 'application/json',
-  })
-  const url = URL.createObjectURL(blob)
   const filename = `flowboard-${todayISO()}.json`
-  const link = document.createElement('a')
-
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-
+  downloadTextFile(filename, JSON.stringify(payload, null, 2), 'application/json')
   return filename
 }

@@ -3,7 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import express, { type Request, type Response, type NextFunction } from 'express'
 import cookieParser from 'cookie-parser'
-import { authenticate, lanFilter } from './auth'
+import { authenticate, lanFilter, requirePasswordChanged } from './auth'
 import { authRouter } from './routes/auth'
 import { boardRouter } from './routes/board'
 import { commentsRouter } from './routes/comments'
@@ -30,6 +30,9 @@ app.use(lanFilter)
 
 // Session authentication check
 app.use(authenticate)
+
+// Accounts with a temporary password may only change it (or sign out)
+app.use(requirePasswordChanged)
 
 // API routes
 app.use('/api/auth', authRouter)

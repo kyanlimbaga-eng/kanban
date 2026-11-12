@@ -4,6 +4,20 @@ import { socket } from '../services/socket'
 import type { Board, Card, CardInput, CardUpdate, Column } from '../types'
 import { arrayMove, sortByPosition } from '../utils/array'
 import { normalizeLabels } from '../utils/labels'
+import { useAuthStore } from './authStore'
+
+/**
+ * Mirrors the server's label-based visibility rule on the client: a
+ * non-admin account only keeps cards that carry one of its assigned labels.
+ * The server already filters REST responses and WebSocket pushes; this guard
+ * is defense in depth for real-time updates.
+ */
+function visibleToCurrentAccount(card: Card): boolean {
+  const user = useAuthStore.getState().user
+  if (!user || user.role === 'admin') return true
+  const allowed = new Set(user.labels.map((label) => label.toLowerCase()))
+  return (card.labels || []).some((label) => allowed.has(label.toLowerCase()))
+}
 
 interface BoardState extends Board {
   isLoading: boolean
@@ -127,6 +141,7 @@ export const useBoardStore = create<BoardState>((set, get) => {
         }
         case 'CARD_CREATED': {
           const card = payload as Card
+          if (!visibleToCurrentAccount(card)) break
           set((state) => ({
             cards: upsertCard(state.cards, card),
             labels: normalizeLabels([...state.labels, ...(card.labels || [])]),
@@ -135,10 +150,17 @@ export const useBoardStore = create<BoardState>((set, get) => {
         }
         case 'CARD_UPDATED': {
           const updated = payload as Card
-          set((state) => ({
-            cards: upsertCard(state.cards, updated),
-            labels: normalizeLabels([...state.labels, ...(updated.labels || [])]),
-          }))
+          set((state) => {
+            if (!visibleToCurrentAccount(updated)) {
+              // The card no longer carries any of this account's labels —
+              // drop it so it disappears from the board immediately.
+              return { cards: state.cards.filter((c) => c.id !== updated.id) }
+            }
+            return {
+              cards: upsertCard(state.cards, updated),
+              labels: normalizeLabels([...state.labels, ...(updated.labels || [])]),
+            }
+          })
           break
         }
         case 'CARD_MOVED': {
@@ -363,6 +385,10 @@ export const useBoardStore = create<BoardState>((set, get) => {
 
       try {
         await api.moveCard(cardId, toColumnId, toIndex)
+        // Re-sync from the server. Label-scoped accounts only see part of the
+        // board, so the local position renumbering can drift from the
+        // server's absolute positions for cards outside their scope.
+        await get().fetchBoard()
       } catch (err) {
         console.error('Failed to move card:', err)
         get().fetchBoard()

@@ -11,6 +11,7 @@ import {
   db,
   hashPassword,
   createSalt,
+  getUserLabels,
   verifyPassword,
   recordAuditLog,
   type UserRow,
@@ -65,6 +66,10 @@ authRouter.post('/login', (req: Request, res: Response): void => {
       username: user.username,
       displayName: user.display_name,
       role: user.role,
+      // Labels scope which cards this account may see (admins are unrestricted)
+      labels: user.role === 'admin' ? [] : getUserLabels(user.id),
+      // True while the account still uses an administrator-issued password
+      mustChangePassword: user.must_change_password === 1,
     },
   })
 })
@@ -105,7 +110,14 @@ authRouter.put('/change-password', requireAuth, (req: Request, res: Response): v
   const newSalt = createSalt()
   const newHash = hashPassword(newPassword, newSalt)
 
-  db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').run(newHash, newSalt, user.id)
+  db.prepare('UPDATE users SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?').run(newHash, newSalt, user.id)
+
+  // The old password is dead now: drop every other session of this account
+  // so the temporary password cannot be used from another device.
+  const currentToken = req.cookies?.flowboard_session ||
+    (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : '')
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(user.id, currentToken || '')
+
   recordAuditLog(user.id, user.username, 'PASSWORD_CHANGED', 'user', user.id, undefined, req.clientIp)
 
   res.json({ success: true, message: 'Password updated successfully.' })

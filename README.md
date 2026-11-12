@@ -9,7 +9,13 @@ Flowboard is a secure, real-time project management and Kanban tool similar to M
 - **Optimistic Concurrency & Conflict Prevention:** Card version checks prevent silent overwrites when multiple team members edit records concurrently.
 - **Role-Based Access Control (RBAC):**
   - **Administrators:** Full access to manage columns, cards, labels, user accounts, and review audit logs.
-  - **Viewers:** Default view-only access to the Kanban board with full ability to view live updates and post comments.
+  - **Viewers:** View the Kanban board, post comments, and move the cards inside their own label scope — they cannot create, edit or delete cards, reorder columns, or manage labels and accounts.
+- **Label-Based Task Visibility (Plan Labels):**
+  - Eight predefined Plan labels categorize the work: **AD DS, GPO, Hardening, PKI, Audit and Monitoring, NAS and Sharing, Drive Mapping and Scheduler, Backup and Recovery**. These labels are seeded automatically and cannot be deleted.
+  - When an account is created or edited, the admin can assign one or more labels (e.g. `adds.ctu` → `AD DS`, `pki.ctu` → `PKI`). The account then only sees the Kanban cards and tasks carrying those labels — in the board, filters, comments, and real-time updates.
+  - Label-scoped accounts drag their own cards between the workflow columns (To Do → In Progress → Review → Done); cards outside their scope are locked.
+  - Enforcement happens on the backend (REST responses **and** WebSocket pushes), so hidden tasks never reach unauthorized clients. Administrators always see everything, and accounts with no labels see no cards.
+- **First-Login Password Setup:** Accounts created by an administrator are flagged to replace the temporary password. The server blocks every board and account endpoint until the new password is set, and the old password stops working immediately.
 - **Security & Hardening:**
   - Password hashing using cryptographic `scrypt` with individual random salts.
   - Secure HTTP-only session cookies with configurable expiration.
@@ -26,9 +32,11 @@ Flowboard is a secure, real-time project management and Kanban tool similar to M
 | Role | Username | Password | Access Level |
 | --- | --- | --- | --- |
 | **Administrator** | `admin` | `4dmin@2026!` | Full administrative and board management control |
-| **Viewer** | `viewer` | `viewer123` | View-only board access with comment collaboration |
+| **Viewer** | `viewer` | `viewer123` | View access with comment collaboration and card movement within assigned labels |
 
-*Admins can create additional accounts and reset passwords in **Settings & Administration → User Accounts**.*
+*Flowboard opens on the **sign-in page** — there is no automatic sign-in, so everyone works with their own account. Use **Switch account** in the header to open the sign-in page without ending the current session, and **Sign out** on that page to end it.*
+
+*Admins can create additional accounts, assign their labels, and reset passwords in **Settings & Administration → User Accounts**. Label scoping only applies to non-admin accounts; administrators see every card.*
 
 ## Tech Stack
 
@@ -96,3 +104,4 @@ This verifies:
 6. Optimistic concurrency conflict rejection (409 Conflict)
 7. Card comment collaboration
 8. Security audit trail logging
+9. Label-based task visibility: seeded Plan labels, account label assignments, backend card/comment filtering, read-only enforcement, scoped card moves, label rename cascade, and per-account WebSocket event filtering

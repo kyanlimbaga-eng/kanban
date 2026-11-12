@@ -8,7 +8,7 @@
     "server": "tsx server/index.ts",
     "start": "tsx server/index.ts",
     "build": "tsc -b && vite build",
-    "test": "tsx test/server.test.ts",
+    "test": "tsx test/server.test.ts && tsx test/export.test.ts",
     "lint": "oxlint",
     "preview": "vite preview"
   },

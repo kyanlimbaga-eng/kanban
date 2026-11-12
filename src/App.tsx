@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Board } from './components/Board'
 import { LoginModal } from './components/LoginModal'
+import { PasswordSetup } from './components/PasswordSetup'
 import { useAuthStore } from './store/authStore'
 import { useBoardStore } from './store/boardStore'
 import { useUiStore } from './store/uiStore'
@@ -22,7 +23,6 @@ function App() {
   const user = useAuthStore((state) => state.user)
   const isAuthLoading = useAuthStore((state) => state.isLoading)
   const checkAuth = useAuthStore((state) => state.checkAuth)
-  const adminLoginRequested = useAuthStore((state) => state.adminLoginRequested)
   const theme = useUiStore((state) => state.theme)
   const fetchBoard = useBoardStore((state) => state.fetchBoard)
 
@@ -31,7 +31,8 @@ function App() {
   }, [checkAuth])
 
   useEffect(() => {
-    if (user) {
+    // Skip loading the board while the sign-in or password setup page is shown.
+    if (user && !user.mustChangePassword) {
       fetchBoard()
     }
   }, [user, fetchBoard])
@@ -48,8 +49,13 @@ function App() {
     return <LoadingScreen />
   }
 
-  if (!user || adminLoginRequested) {
+  if (!user) {
     return <LoginModal />
+  }
+
+  // Accounts with a temporary password may only set their own password
+  if (user.mustChangePassword) {
+    return <PasswordSetup />
   }
 
   // Enforce Role-Based Access Control: Admin has full access, Viewers are view-only
